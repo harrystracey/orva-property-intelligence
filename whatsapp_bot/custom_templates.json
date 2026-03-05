@@ -1,0 +1,28 @@
+{
+  "landlord_lease_expiry": [
+    "Hi {name}, hope you are well.\n\nI understand you may have a tenancy period coming to an end on your property in {building} (Unit {unit}). If you're exploring options for your next move, I'd love to help — I have a client looking for something similar.\n\nBut you might say you dont need to rent it out.\n\nMany thanks, Harry.",
+    "Hi {name}, I work exclusively on Palm Jumeirah and noticed your property in {building} (Unit {unit}) may have a lease transition coming up.\n\nWhether you're looking to re-let or considering a sale, I'd be happy to share what the market looks like for your unit right now.\n\nHarry.",
+    "Hi {name}, your {bedrooms}-bed in {building} (Unit {unit}) is in a bracket that's been moving well recently.\n\nWith a potential lease change coming up, it might be worth knowing your options. Happy to share some recent comparables if useful 😊\n\nHarry."
+  ],
+  "cold_owner_single": [
+    "Hi {name}, hope you are well.\n\nI'm reaching out to owners in {building} (Unit {unit}) as I have a family office looking to acquire in the building. Is it available for viewing this week?\n\nMany thanks, Harry.",
+    "Hi {name}, hope you're well.\n\nI have a client who was interested in buying in {building}, I checked and noticed some strong movement in it recently. Your unit ({unit}) sits in a size bracket that's seeing real demand right now.\n\nIs it available for viewing this week?\n\nMany thanks, Harry."
+  ],
+  "cold_owner_portfolio": [
+    "Good morning {name}! I tried giving you a call last week but couldn't get hold of you. I see you have invested multiple times in {building} and I just wanted to check if they are all currently being rented out or if any are for sale? I have a client interested so I thought I'd give you a message 😊\n\nIs it available for viewing this week?",
+    "Hi {name}, hope you are well I can see you hold multiple units in {building} - impressive portfolio.\n\nI have a family office actively looking in the building and wanted to check if you'd consider selling any of your positions? Is it available for viewing this week?\nHarry.",
+    "Hi {name}, hope you are well.\n\nI have a family office actively looking in {building}, I can see you hold multiple units in it — impressive portfolio.\n\nIs it available for viewing this week?\n\nMany thanks, Harry."
+  ],
+  "recent_sale": [
+    "Hi {name}, hope you are well.\n\nI noticed your recent sale in {building} (Unit {unit}) and wanted to reach out. If you're looking to reinvest on Palm or have other properties to discuss, I'd be happy to help. There are many asset owners expecting a market correction and are worried at the moment - I can share recent transaction data to prove this if you'd like.\n\nMany thanks, Harry.",
+    "Hi {name}, did you know that secondary sales made up just 26% of Palm Jumeirah transactions last month? The rest was off-plan. The market isn't slowing down — capital is just moving differently.\n\nI'm reaching out to owners in {building} because this shift is creating some real opportunities for people who already hold assets on the Palm. If you'd be open to a 10-minute coffee or call, I can walk you through exactly where the value is sitting right now.\n\nMany thanks, Harry.",
+    "Hi {name}, I hope you don't mind me reaching out. I work with a number of owners in {building} and your name came up through my network.\n\nI specialise in Palm Jumeirah and always like to connect with people active in the area. If you're ever looking at options here, whether to buy, sell, or just get a market view, I'm always happy to chat.\n\nMany thanks, Harry.",
+    "Hi {name}, hope all is well. I've been speaking with a few investors recently who are repositioning within Palm Jumeirah.\n\nIf you're exploring where to deploy capital right now, I'm seeing some interesting entry points that weren't available 6 months ago. Happy to share if useful 😊\n\nMany thanks, Harry."
+  ],
+  "active_renter": [
+    "Hi {name}, hope all is well. Is your {bedrooms} bed unit ({unit}) still available? I have a client here with me which I might be able to match. 😊\n\nMany thanks, Harry"
+  ],
+  "active_seller": [
+    "Hi {name}, hope you're well.\n\nI have a client actively looking for a {bedrooms} bed in {building}. I came across your property and wanted to reach out directly before going wider.\n\nWith the market the way it is right now - buyers are still there, but they're being more selective than they were a week - getting the positioning and exposure right from day one is critical.\n\nAre you currently working exclusively with an agent, or are you open to a conversation? I'd rather have a quick 10-minute call than waste your time over message.\n\nHarry | Edwards & Towers"
+  ]
+}

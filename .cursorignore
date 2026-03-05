@@ -1,0 +1,17 @@
+# Ignore huge lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Ignore build folders
+dist/
+build/
+.next/
+node_modules/
+
+# Ignore media assets (AI doesn't need to read these)
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.mp4
