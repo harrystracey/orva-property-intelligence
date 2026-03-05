@@ -1824,13 +1824,20 @@ def render_lead_search_page():
             
             sort_col1, sort_col2 = st.columns([1, 5])
             with sort_col1:
-                sort_order = st.selectbox("Sort by Date", ["Newest First", "Oldest First"], index=0)
-            
-            sort_col = 'display_date' if 'display_date' in filtered.columns else 'date'
-            if sort_col in filtered.columns:
+                sort_order = st.selectbox("Sort by", ["Completeness", "Newest First", "Oldest First"], index=0)
+
+            date_col = 'display_date' if 'display_date' in filtered.columns else 'date'
+            if sort_order == "Completeness":
+                sort_keys = ['completeness']
+                sort_asc = [False]
+                if date_col in filtered.columns:
+                    sort_keys.append(date_col)
+                    sort_asc.append(False)
+                filtered = filtered.sort_values(sort_keys, ascending=sort_asc, na_position='last')
+            elif date_col in filtered.columns:
                 ascending = (sort_order == "Oldest First")
-                filtered = filtered.sort_values(sort_col, ascending=ascending, na_position='last')
-                filtered = filtered.reset_index(drop=True)
+                filtered = filtered.sort_values(date_col, ascending=ascending, na_position='last')
+            filtered = filtered.reset_index(drop=True)
             
             # Add rental status indicators (vectorized)
             if not rental_df.empty:

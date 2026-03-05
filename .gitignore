@@ -51,3 +51,10 @@ logs/
 
 # Temp
 *.tmp
+bayut_scraper/chrome_debug_profile/
+
+# Chrome browser profiles (not code)
+whatsapp_bot/whatsapp_chrome_profile/
+bayut_scraper/chrome_debug_profile/
+propertyfinder_scraper/chrome_debug_profile/
+scraper/chrome_debug_profile/
