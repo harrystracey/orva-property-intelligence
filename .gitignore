@@ -1,0 +1,53 @@
+# Environment
+.env
+*.env
+
+# Chat history (persisted locally, not version controlled)
+chat_history/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data files (too large for git)
+data/*.csv
+data/*.xlsx
+data/*.xls
+data/*.db
+data/*.db-wal
+data/*.db-shm
+reference_data/*.csv
+
+# Client data (persisted locally)
+client_data/
+
+# Large data files
+lead_database/*.csv
+lead_database/*.parquet
+scraped_data/*.csv
+scraped_data/*.json
+data/bayut_listings_progress.json
+
+# Logs
+logs/
+*.log
+
+# Temp
+*.tmp
