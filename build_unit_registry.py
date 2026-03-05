@@ -173,6 +173,9 @@ for idx, row in leads.iterrows():
     if pd.notna(size):
         try:
             size_val = float(str(size).replace(",", ""))
+            # Detect sqm stored as sqft: no Palm apartment is under 300 sqft
+            if size_val < 300:
+                size_val = round(size_val * 10.764, 1)
         except (ValueError, TypeError):
             pass
 
