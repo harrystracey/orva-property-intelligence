@@ -69,3 +69,8 @@ whatsapp_bot/baileys_server/node_modules/
 
 # Playwright Chrome profiles (session data — never commit)
 whatsapp_bot/playwright_server/chrome_profile/
+
+# Scraper Chrome profiles (session data — never commit)
+scraped_data/pf_chrome_profile/
+propertyfinder_scraper/pf_chrome_profile/
+bayut_scraper/chrome_debug_profile/
