@@ -31,9 +31,25 @@
     "Hi {name}, hope you're well.\n\nI have a client actively looking for a {bedrooms} bed in {building}. I came across your property and wanted to reach out directly before going wider.\n\nWith the market the way it is right now - buyers are still there, but they're being more selective than they were a week - getting the positioning and exposure right from day one is critical.\n\nAre you currently working exclusively with an agent, or are you open to a conversation? I'd rather have a quick 10-minute call than waste your time over message.\n\nHarry | Edwards & Towers"
   ],
   "active_renter": [
-    "Hi {name}, hope all is well. Is your {bedrooms} unit ({unit}) in {building} still available? I have a client here with me which I might be able to match. 😊\n\nMany thanks, Harry"
+    "Hi {name}, hope all is well. Is your {bedrooms} unit ({unit}) in {building} still available? I have a client and I am here and I'm doing viewings there this weekend. Can we view yours too?\n\nMany thanks, Harry",
+    "Hi {name}, I have a client here who is looking to rent in {building}. Is your unit {unit} still available?\n\nHarry | Edward's and Towers"
+  ],
+  "propspace_tenant": [
+    "Hi {name}, are you still looking for a rental in {building}?\n\nI have a few options available right now and would be happy to send across the details.\n\nThanks, Harry.",
+    "Hi {name}, hope the search is going well.\n\nStill in the market for a rental in {building}? I have a good selection on the Palm at the moment — happy to share what’s available.\n\nThanks, Harry.",
+    "Hi {name}, just checking in — are you still looking in {building}?\n\nI’ve got a lot of stock on the Palm right now and may have exactly what you’re after.\n\nThanks, Harry.",
+    "Hi {name}, hope you’re well.\n\nStill searching in {building}? I cover the Palm closely and have some good availability right now — happy to send details if still relevant.\n\nThanks, Harry.",
+    "Hi {name}, are you still in the market for a rental on the Palm?\n\nI have a strong selection in {building} at the moment and would love to help if the search is still on.\n\nThanks, Harry."
+  ],
+  "propspace_buyer": [
+    "Hi {name}, are you still looking to buy in {building}?\n\nI have a few options available right now and would be happy to share the details.\n\nMany thanks, Harry.",
+    "Hi {name}, hope the search is going well.\n\nStill considering {building}? I have some motivated sellers on the Palm at the moment — could be worth a conversation.\n\nMany thanks, Harry.",
+    "Hi {name}, just checking in — are you still in the market for a property on the Palm?\n\nI cover {building} closely and have a few off-market options that could be worth a look.\n\nMany thanks, Harry.",
+    "Hi {name}, hope you’re well.\n\nStill searching in {building}? I have a good selection available right now — happy to share details if still relevant.\n\nMany thanks, Harry.",
+    "Hi {name}, are you still looking to buy on the Palm?\n\nI have a couple of options in {building} from motivated sellers that might suit — happy to send across what I have.\n\nMany thanks, Harry."
   ],
   "active_renter_active": [
-    "Hi {name}, hope all is well. Is your {bedrooms} unit ({unit}) in {building} still available? I have a client here with me which I might be able to match. 😊\n\nMany thanks, Harry"
+    "Hi {name}, hope all is well. Is your {bedrooms} unit ({unit}) in {building} still available? I have a client and I am here and I'm doing viewings there this weekend. Can we view yours too?\n\nMany thanks, Harry",
+    "Hi {name}, I have a client here who is looking to rent in {building}. Is your unit {unit} still available?\n\nHarry | Edward's and Towers"
   ]
 }

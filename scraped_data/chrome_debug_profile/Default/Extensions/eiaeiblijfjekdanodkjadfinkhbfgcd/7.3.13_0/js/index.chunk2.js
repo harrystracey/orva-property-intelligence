@@ -1,0 +1,1 @@
+import{a as o}from"./browser-polyfill.chunk.js";import{g as r,d as a}from"./biometrics.chunk.js";const t=(s,e={})=>o.runtime.sendMessage({...e,type:s}).catch(a),i=s=>{},c=r({sendMessage:t,logMessage:i});export{c as api,t as sendMessage};

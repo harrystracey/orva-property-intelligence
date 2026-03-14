@@ -1,72 +1,57 @@
 """
-WhatsApp Bot - Playwright automation for WhatsApp Web
-Connects to user's Chrome via CDP (same pattern as Property Monitor scraper).
+WhatsApp Bot - Baileys HTTP bridge
+Sends messages via the local Baileys Node.js server (http://127.0.0.1:3001).
+Playwright/CDP functions retained for chat scanning (local Windows use only).
 """
 
 import asyncio
 import re
 import random
+import requests
 from playwright.async_api import async_playwright, Page, Browser
 from typing import Optional, Dict
 
 
-CDP_PORT = 9222
-CDP_URL = f"http://localhost:{CDP_PORT}"
+BAILEYS_ACCOUNTS = {
+    "1": "http://127.0.0.1:3001",
+    "2": "http://127.0.0.1:3002",
+}
+BAILEYS_URL = BAILEYS_ACCOUNTS["1"]  # default
 
 
-async def connect_to_whatsapp() -> tuple:
+def get_baileys_url(account: str = "1") -> str:
+    return BAILEYS_ACCOUNTS.get(str(account), BAILEYS_ACCOUNTS["1"])
+
+
+async def connect_to_whatsapp(account: str = "1") -> tuple:
     """
-    Connect to already-running Chrome and find WhatsApp Web tab.
-    Returns (playwright, browser, page)
+    Check that the Baileys server is running and WhatsApp is connected.
+    Returns (None, None, None) — page param kept for run_campaign.py compatibility.
     """
-    print("[CONNECT] Connecting to Chrome via CDP...")
-    
-    playwright = await async_playwright().start()
-    
+    url = get_baileys_url(account)
+    port = url.split(":")[-1]
     try:
-        browser = await playwright.chromium.connect_over_cdp(CDP_URL)
-        print("[OK] Connected to Chrome")
-    except Exception as e:
-        print(f"[ERROR] Could not connect to Chrome: {e}")
-        print(f"  Make sure Chrome is running with --remote-debugging-port={CDP_PORT}")
-        print(f"  Command: chrome.exe --remote-debugging-port={CDP_PORT}")
-        raise
-    
-    # Find WhatsApp Web tab
-    page = None
-    for context in browser.contexts:
-        for p in context.pages:
-            if 'web.whatsapp.com' in p.url:
-                page = p
-                print(f"[OK] Found WhatsApp Web tab: {p.url}")
-                break
-        if page:
-            break
-    
-    if not page:
-        print("[ERROR] WhatsApp Web tab not found.")
-        print("  Please open web.whatsapp.com in Chrome and log in first.")
-        raise Exception("WhatsApp Web tab not found")
-    
-    return playwright, browser, page
+        r = requests.get(f"{url}/status", timeout=5)
+        data = r.json()
+        if data.get("connected"):
+            print(f"[OK] Baileys account {account} connected — phone: {data.get('phone')}")
+            return None, None, None
+        elif data.get("qr_available"):
+            raise Exception(f"WhatsApp account {account} not connected. Open ORVA → WhatsApp page → scan QR.")
+        else:
+            raise Exception(f"WhatsApp account {account} not connected and no QR yet. Wait a moment and retry.")
+    except requests.exceptions.ConnectionError:
+        raise Exception(
+            f"Baileys server not running on port {port}. SSH to server and run: pm2 start baileys-wa-{account}"
+        )
 
 
-async def reconnect_to_whatsapp(playwright, browser) -> tuple:
+async def reconnect_to_whatsapp(playwright, browser, account: str = "1") -> tuple:
     """
-    Close the existing browser and stop Playwright (ignore errors), then connect fresh via CDP.
-    Use after a long batch pause when the CDP connection may have died.
-    Returns (playwright, browser, page) from a new connection.
+    Baileys auto-reconnects on its own. Just re-verify status.
+    playwright/browser params kept for run_campaign.py compatibility — ignored.
     """
-    try:
-        await browser.close()
-    except Exception:
-        pass
-    try:
-        await asyncio.sleep(0.2)
-        await playwright.stop()
-    except Exception:
-        pass
-    return await connect_to_whatsapp()
+    return await connect_to_whatsapp(account)
 
 
 def format_phone_for_whatsapp(phone_primary: str) -> Optional[str]:
@@ -106,15 +91,40 @@ def format_phone_for_whatsapp(phone_primary: str) -> Optional[str]:
     return f"971{phone}"
 
 
-async def send_message(page: Page, phone_number: str, message: str) -> Dict:
+async def send_message(page: Page, phone_number: str, message: str, skip_chat_check: bool = False, account: str = "1") -> Dict:
     """
-    Send a WhatsApp message to a phone number.
-    
-    IMPORTANT: Multi-line messages are sent as ONE message using Shift+Enter for line breaks.
-    Enter is only pressed ONCE at the very end to send the complete message.
-    
-    Returns:
-        Dict with 'status' ('sent', 'failed', 'not_on_whatsapp', 'existing_chat') and optionally 'error'.
+    Send a WhatsApp message via the Baileys HTTP server.
+    page param retained for run_campaign.py compatibility — ignored.
+    account: "1" or "2" — selects which Baileys instance to use.
+    Returns Dict with 'status': 'sent' | 'failed' | 'not_on_whatsapp'
+    """
+    baileys_url = get_baileys_url(account)
+    try:
+        print(f"[SEND] Baileys account {account} → {phone_number}")
+        r = requests.post(
+            f"{baileys_url}/send/text",
+            json={"phone": phone_number, "message": message},
+            timeout=30,
+        )
+        if r.status_code == 503:
+            raise Exception("Baileys server not connected")
+        data = r.json()
+        if data.get("success"):
+            print(f"  [OK] Sent to {phone_number}")
+            return {"status": "sent", "phone": phone_number}
+        err = data.get("error", "")
+        if "not registered" in err:
+            print(f"  [SKIP] {phone_number} not on WhatsApp")
+            return {"status": "not_on_whatsapp", "phone": phone_number}
+        return {"status": "failed", "phone": phone_number, "error": err}
+    except Exception as e:
+        print(f"  [FAIL] {phone_number}: {str(e)[:100]}")
+        return {"status": "failed", "phone": phone_number, "error": str(e)[:200]}
+
+
+async def _send_message_playwright(page: Page, phone_number: str, message: str, skip_chat_check: bool = False) -> Dict:
+    """
+    Legacy Playwright-based send (local Windows use only — kept for reference).
     """
     try:
         url = f"https://web.whatsapp.com/send?phone={phone_number}"
@@ -232,9 +242,11 @@ async def send_message(page: Page, phone_number: str, message: str) -> Dict:
             }
             return false;
         }''')
-        if has_messages:
+        if has_messages and not skip_chat_check:
             print(f"  [SKIP] {phone_number} already has a chat")
             return {'status': 'existing_chat', 'phone': phone_number}
+        elif has_messages:
+            print(f"  [FOLLOWUP] {phone_number} has existing chat - sending follow-up")
         
         # Human-like typing: 30-120ms per char, word-level pauses every 4-8 words
         print(f"  [TYPE] Typing message ({len(message)} chars)...")
@@ -341,4 +353,106 @@ async def check_replies_for_sent_messages(
         except Exception as e:
             results['errors'].append(f"{phone}: {str(e)[:80]}")
         await asyncio.sleep(delay_between_chats)
+    return results
+
+async def scan_chat_messages(page, phone: str) -> dict:
+    """
+    Open a WhatsApp chat and read all visible messages (both sent and received).
+    WhatsApp Web virtualises the list so only ~50-100 recent messages are rendered.
+    Returns dict with incoming/outgoing lists and summary fields.
+    """
+    url = f"https://web.whatsapp.com/send?phone={phone}"
+    await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+    await asyncio.sleep(4)
+
+    # Wait for at least one message element to render
+    try:
+        await page.wait_for_selector("[data-id]", timeout=10000)
+    except Exception:
+        pass  # No messages rendered � proceed anyway
+
+    # Check not-on-WhatsApp
+    page_text = await page.evaluate("() => document.body.innerText")
+    if ("isn’t on WhatsApp" in page_text or
+            "isn't on WhatsApp" in page_text or
+            "is not on WhatsApp" in page_text or
+            "number shared via url is invalid" in page_text):
+        return {"messages": [], "incoming": [], "outgoing": [],
+                "incoming_count": 0, "outgoing_count": 0,
+                "last_reply_text": "", "last_reply_at": "",
+                "last_sent_at": "", "not_on_whatsapp": True}
+
+    js = """
+(function() {
+    var msgs = [];
+    var els = document.querySelectorAll('[data-id]');
+    els.forEach(function(el) {
+        var id = el.getAttribute('data-id') || '';
+        var dir = id.startsWith('true_') ? 'out' : (id.startsWith('false_') ? 'in' : null);
+        if (!dir) return;
+        var textEl = el.querySelector('span.selectable-text');
+        var text = textEl ? textEl.innerText.trim() : '';
+        if (!text) return;
+        var timeEl = el.querySelector('span[data-testid="msg-time"]');
+        var time = timeEl ? timeEl.innerText.trim() : '';
+        msgs.push({dir: dir, text: text, time: time});
+    });
+    return JSON.stringify(msgs);
+})()
+"""
+    import json as _json
+    raw = await page.evaluate(js)
+    messages = _json.loads(raw) if raw else []
+
+    if not messages:
+        import sys as _sys
+        print(f"WARN: 0 messages for {phone}", file=_sys.stderr, flush=True)
+
+    incoming = [m for m in messages if m["dir"] == "in"]
+    outgoing = [m for m in messages if m["dir"] == "out"]
+
+    return {
+        "messages": messages,
+        "incoming": incoming,
+        "outgoing": outgoing,
+        "incoming_count": len(incoming),
+        "outgoing_count": len(outgoing),
+        "last_reply_text": incoming[-1]["text"] if incoming else "",
+        "last_reply_at": incoming[-1]["time"] if incoming else "",
+        "last_sent_at": outgoing[-1]["time"] if outgoing else "",
+        "not_on_whatsapp": False,
+    }
+
+
+async def scan_all_bot_chats(page, phones: list, delay: float = 2.5,
+                              progress_callback=None) -> list:
+    """
+    Scan all bot-messaged chats and return a list of scan result dicts.
+    phones: list of dicts with at least 'phone' and optionally 'owner_name'.
+    progress_callback(done, total): called after each chat for UI updates.
+    """
+    results = []
+    total = len(phones)
+    for i, entry in enumerate(phones):
+        phone = entry.get("phone", "")
+        if not phone:
+            continue
+        try:
+            scan = await scan_chat_messages(page, phone)
+            scan["phone"] = phone
+            scan["owner_name"] = entry.get("owner_name", "")
+            results.append(scan)
+        except Exception as e:
+            results.append({
+                "phone": phone,
+                "owner_name": entry.get("owner_name", ""),
+                "messages": [], "incoming": [], "outgoing": [],
+                "incoming_count": 0, "outgoing_count": 0,
+                "last_reply_text": "", "last_reply_at": "",
+                "last_sent_at": "", "not_on_whatsapp": False,
+                "error": str(e)[:120],
+            })
+        if progress_callback:
+            progress_callback(i + 1, total)
+        await asyncio.sleep(delay)
     return results

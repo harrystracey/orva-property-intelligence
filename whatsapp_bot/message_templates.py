@@ -8,11 +8,12 @@ Custom overrides loaded from custom_templates.json if present.
 import re
 import random
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, List
 
 CUSTOM_TEMPLATES_PATH = Path(__file__).parent / "custom_templates.json"
-TEMPLATE_KEYS = ['landlord_lease_expiry', 'cold_owner_single', 'cold_owner_portfolio', 'recent_sale', 'portfolio_owner', 'active_seller', 'active_renter']
+TEMPLATE_KEYS = ['landlord_lease_expiry', 'cold_owner_single', 'cold_owner_portfolio', 'recent_sale', 'portfolio_owner', 'active_seller', 'active_renter', 'propspace_tenant', 'propspace_buyer', 'propspace_tenant_followup', 'propspace_buyer_followup']
 
 
 def format_building_for_message(building: str) -> str:
@@ -37,6 +38,9 @@ def format_first_name(full_name: str) -> Optional[str]:
     
     name = full_name.strip()
     
+    # Replace underscores with spaces (CRM format: FirstName_LastInitial)
+    name = name.replace('_', ' ').strip()
+    
     # Skip corporate entities (management companies, etc.) — message will use "Hi" only, no name
     corporate_indicators = [
         'LLC', 'LTD', 'L.L.C', 'CORP', 'INC', 'FZCO', 'FZE', 'FZ',
@@ -57,14 +61,126 @@ def format_first_name(full_name: str) -> Optional[str]:
     parts = name.split()
     if not parts:
         return None
-    
-    first = parts[0].strip().title()
-    
-    # If first part is "Al" or "El", include next part (Arabic naming)
+
+    first = parts[0].strip()
+
+    # Strip non-alphabetic chars (handles tilde/dot-prefixed initials like ~A.G)
+    alpha_only = re.sub(r"[^a-zA-Z]", "", first)
+
+    # Single letter or empty after stripping = clearly not a name
+    if len(alpha_only) <= 1:
+        return None
+
+    # No vowels and short = initials/code (e.g. Pcf, AG, PCF)
+    if not any(c.lower() in 'aeiou' for c in alpha_only) and len(alpha_only) <= 5:
+        return None
+    # All-uppercase and short = abbreviation/initials (e.g. AG, XY)
+    if alpha_only.isupper() and len(alpha_only) <= 4:
+        return None
+
+
+    first = alpha_only.capitalize()
+
+    # Arabic naming: if first part is Al/El/etc, include next part
     if first.lower() in ('al', 'el', 'abu', 'bin', 'bint') and len(parts) > 1:
         first = f"{first} {parts[1].strip().title()}"
-    
+
     return first
+
+
+
+# =============================================================================
+# PROPSPACE LEAD TEMPLATES (warm buyer/tenant follow-up)
+# =============================================================================
+# Placeholders: {name}, {building}, {beds_part}, {budget_part}
+# {beds_part}   = " 2-bed" or "" if unknown
+# {budget_part} = " around AED 180K" or "" if unknown
+# Reference the enquiry directly — these are warm leads who already showed interest
+
+PROPSPACE_TENANT = [
+    "Hi {name}, are you still looking for a rental in {building}?\n\n"
+    "I have a few options available right now and would be happy to send across the details.\n\n"
+    "Thanks, Harry.",
+
+    "Hi {name}, hope the search is going well.\n\n"
+    "Still in the market for a rental in {building}? I have a good selection on the Palm at the moment — "
+    "happy to share what’s available.\n\n"
+    "Thanks, Harry.",
+
+    "Hi {name}, just checking in — are you still looking in {building}?\n\n"
+    "I’ve got a lot of stock on the Palm right now and may have exactly what you’re after.\n\n"
+    "Thanks, Harry.",
+
+    "Hi {name}, hope you’re well.\n\n"
+    "Still searching in {building}? I cover the Palm closely and have some good availability right now — "
+    "happy to send details if still relevant.\n\n"
+    "Thanks, Harry.",
+
+    "Hi {name}, are you still in the market for a rental on the Palm?\n\n"
+    "I have a strong selection in {building} at the moment and would love to help if the search is still on.\n\n"
+    "Thanks, Harry.",
+]
+
+PROPSPACE_BUYER = [
+    "Hi {name}, are you still looking to buy in {building}?\n\n"
+    "I have a few options available right now and would be happy to share the details.\n\n"
+    "Many thanks, Harry.",
+
+    "Hi {name}, hope the search is going well.\n\n"
+    "Still considering {building}? I have some motivated sellers on the Palm at the moment — "
+    "could be worth a conversation.\n\n"
+    "Many thanks, Harry.",
+
+    "Hi {name}, just checking in — are you still in the market for a property on the Palm?\n\n"
+    "I cover {building} closely and have a few off-market options that could be worth a look.\n\n"
+    "Many thanks, Harry.",
+
+    "Hi {name}, hope you’re well.\n\n"
+    "Still searching in {building}? I have a good selection available right now — "
+    "happy to share details if still relevant.\n\n"
+    "Many thanks, Harry.",
+
+    "Hi {name}, are you still looking to buy on the Palm?\n\n"
+    "I have a couple of options in {building} from motivated sellers that might suit — "
+    "happy to send across what I have.\n\n"
+    "Many thanks, Harry.",
+]
+
+
+# =============================================================================
+# PROPSPACE FOLLOW-UP TEMPLATES (for leads already spoken to)
+# =============================================================================
+# Short, soft re-engagement for people you already have an existing chat with.
+# Placeholders: {name}, {building}, {beds_part}
+
+PROPSPACE_TENANT_FOLLOWUP = [
+    "Hi {name}, just following up — are you still looking for a rental in {building}?\n\n"
+    "Happy to share what’s available.\n\n"
+    "Thanks, Harry.",
+
+    "Hi {name}, hope the search is going well. Still in the market?\n\n"
+    "I have a few options in {building} right now — happy to send details.\n\n"
+    "Thanks, Harry.",
+
+    "Hi {name}, just checking in — still searching on the Palm?\n\n"
+    "Have some good availability in {building} at the moment.\n\n"
+    "Thanks, Harry.",
+]
+
+PROPSPACE_BUYER_FOLLOWUP = [
+    "Hi {name}, just following up — are you still looking to buy in {building}?\n\n"
+    "Happy to share what I have available.\n\n"
+    "Many thanks, Harry.",
+
+    "Hi {name}, hope all is well. Still considering {building}?\n\n"
+    "I have a couple of options from motivated sellers right now — worth a look.\n\n"
+    "Many thanks, Harry.",
+
+    "Hi {name}, just checking in — still in the market on the Palm?\n\n"
+    "Have some good options in {building} at the moment.\n\n"
+    "Many thanks, Harry.",
+]
+
 
 
 # =============================================================================
@@ -307,7 +423,8 @@ def generate_message(
     is_portfolio: bool = False,
     unit_count: Optional[int] = None,
     buildings: Optional[str] = None,
-    listing_price: Optional[str] = None
+    listing_price: Optional[str] = None,
+    budget_max: Optional[int] = None,
 ) -> Optional[Dict[str, str]]:
     """
     Generate a personalized message for a lead.
@@ -342,6 +459,18 @@ def generate_message(
     elif campaign_type == 'active_renter':
         template_type = 'active_renter'
         templates = _get_templates_for_type(template_type, ACTIVE_RENTER)
+    elif campaign_type == 'propspace_tenant':
+        template_type = 'propspace_tenant'
+        templates = _get_templates_for_type(template_type, PROPSPACE_TENANT)
+    elif campaign_type == 'propspace_buyer':
+        template_type = 'propspace_buyer'
+        templates = _get_templates_for_type(template_type, PROPSPACE_BUYER)
+    elif campaign_type == 'propspace_tenant_followup':
+        template_type = 'propspace_tenant_followup'
+        templates = _get_templates_for_type(template_type, PROPSPACE_TENANT_FOLLOWUP)
+    elif campaign_type == 'propspace_buyer_followup':
+        template_type = 'propspace_buyer_followup'
+        templates = _get_templates_for_type(template_type, PROPSPACE_BUYER_FOLLOWUP)
     else:
         raise ValueError(f"Unknown campaign_type: {campaign_type}")
     
@@ -368,6 +497,26 @@ def generate_message(
             bedrooms=bedrooms or '',
             bedrooms_display=bedrooms_display
         )
+    elif campaign_type in ('propspace_tenant', 'propspace_buyer', 'propspace_tenant_followup', 'propspace_buyer_followup'):
+        if bedrooms is not None and str(bedrooms).strip() not in ('', 'nan'):
+            b = str(bedrooms).strip()
+            beds_display = 'studio' if b == '0' else f'{b}-bed'
+            beds_part = f' {beds_display}'
+        else:
+            beds_display = ''
+            beds_part = ''
+        # budget_part: ' within your budget' if we have budget data
+        if budget_max and isinstance(budget_max, int) and budget_max > 0:
+            budget_part = ' within your budget'
+        else:
+            budget_part = ''
+        message = template.format(
+            name=first_name,
+            building=building_display,
+            beds_display=beds_display,
+            beds_part=beds_part,
+            budget_part=budget_part,
+        )
     else:
         # Format message (bedrooms_display avoids "-bed" when bedrooms is None)
         bedrooms_display = f"{bedrooms}-bed" if bedrooms is not None and str(bedrooms).strip() != '' else ''
@@ -378,25 +527,25 @@ def generate_message(
             bedrooms=bedrooms or '',
             bedrooms_display=bedrooms_display
         )
-    # Corporate/management company: use "Hi" only (no name) so it doesn't look bot-written
+    # Corporate/management company or non-name: use time-based greeting without name
     if is_corporate:
-        message = (
-            message.replace("Hi , ", "Hi ")
-            .replace("Hi ,\n", "Hi,\n")
-            .replace("Hi ,", "Hi,")
-            .replace("Hi . ", "Hi. ")
-            .replace("Good morning , ", "Good morning. ")
-            .replace("Good morning . ", "Good morning. ")
-            .replace("Good morning ,\n", "Good morning.\n")
-            .replace("Good morning .\n", "Good morning.\n")
-            .replace("Hey , ", "Hey ")
-            .replace("Hey ,\n", "Hey,\n")
-            .replace("Hey . ", "Hey. ")
-            .replace("Morning , ", "Morning. ")
-            .replace("Morning . ", "Morning. ")
-            .replace("Morning ,\n", "Morning.\n")
-            .replace("Morning .\n", "Morning.\n")
-        )
+        # Fix name placeholder artifacts
+        for old_g, new_g in [(", ", ", "), (",", ",")]:
+            for prefix in ["Hi", "Hey", "Good morning", "Morning", "Good afternoon", "Good evening"]:
+                message = message.replace(prefix + " , " , prefix + ", ")
+                message = message.replace(prefix + " ," , prefix + ",")
+        # Time-based greeting at message start
+        _h = datetime.now().hour
+        if _h < 12:
+            _g = random.choice(["Good morning", "Morning"])
+        elif _h < 18:
+            _g = random.choice(["Good afternoon", "Hi", "Hey"])
+        else:
+            _g = random.choice(["Good evening", "Hi", "Hey"])
+        import re as _re
+        _pat = "^(Hi|Hey|Morning|Good morning|Good afternoon|Good evening), "
+        if _re.match(_pat, message):
+            message = _re.sub(_pat, _g + ", ", message, count=1)
     message = randomize_message(message)
 
     return {
@@ -456,6 +605,8 @@ def get_editable_templates() -> Dict[str, List[str]]:
         'portfolio_owner': list(PORTFOLIO_OWNER),
         'active_seller': list(ACTIVE_SELLER),
         'active_renter': list(ACTIVE_RENTER),
+        'propspace_tenant': list(PROPSPACE_TENANT),
+        'propspace_buyer': list(PROPSPACE_BUYER),
     }
     # Merge: custom overrides defaults for base keys only
     result = dict(defaults)

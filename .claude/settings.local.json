@@ -3,7 +3,8 @@
     "allow": [
       "Bash(python build_unit_registry.py)",
       "Bash(python -c \":*)",
-      "Bash(python -c \"import ast; ast.parse\\(open\\(''build_unit_registry.py'', encoding=''utf-8''\\).read\\(\\)\\); print\\(''OK''\\)\")"
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''build_unit_registry.py'', encoding=''utf-8''\\).read\\(\\)\\); print\\(''OK''\\)\")",
+      "Bash(du -sh lead_database/*.*)"
     ]
   }
 }

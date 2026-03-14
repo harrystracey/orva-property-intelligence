@@ -1,0 +1,1 @@
+import{hV as a,j as n,C as r,e,v as l}from"./index.chunk.js";import"./browser-polyfill.chunk.js";import"./biometrics.chunk.js";import"./FileSaver.min.chunk.js";const m=({className:o,onClick:t})=>{const s=a();return n.jsx(r,{className:l("w-full",o),"data-testid":"download-logs-button",rank:"secondary",onClick:t||(()=>e(s)),children:"Download logs"})};export{m as default};

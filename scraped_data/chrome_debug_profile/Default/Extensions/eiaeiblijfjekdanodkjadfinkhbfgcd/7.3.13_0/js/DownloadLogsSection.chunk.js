@@ -1,0 +1,1 @@
+import{a5 as t,j as o,j3 as n,e as a,j4 as e,s as i}from"./index.chunk.js";import"./browser-polyfill.chunk.js";import"./biometrics.chunk.js";import"./FileSaver.min.chunk.js";const m=()=>{const{formatMessage:s}=t();return o.jsx(n,{title:s({id:"downloadLogs"}),"data-testid":"settings_download-logs",onClick:()=>a(i),children:o.jsx(e,{})})};export{m as default};

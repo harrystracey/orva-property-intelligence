@@ -10,11 +10,16 @@ import os
 import re
 import sys
 import json
+import platform
 import subprocess
+import requests
 from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
 import anthropic
+import yaml
+from yaml.loader import SafeLoader
+import streamlit_authenticator as stauth
 
 try:
     from data_processor import (
@@ -69,7 +74,28 @@ from whatsapp_bot.campaign_manager import (
     build_portfolio_owner_queue, build_active_seller_queue, build_active_renter_queue,
     apply_dedup_to_queue, generate_messages_for_queue
 )
-from whatsapp_bot.bot import format_phone_for_whatsapp, connect_to_whatsapp, check_replies_for_sent_messages
+from whatsapp_bot.bot import format_phone_for_whatsapp, connect_to_whatsapp, check_replies_for_sent_messages, scan_chat_messages
+
+
+def _run_async(coro):
+    import threading
+    _res, _err = [None], [None]
+    def _target():
+        import asyncio
+        loop = asyncio.ProactorEventLoop() if sys.platform == "win32" else asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            _res[0] = loop.run_until_complete(coro)
+        except Exception as e:
+            _err[0] = e
+        finally:
+            loop.close()
+    t = threading.Thread(target=_target, daemon=True)
+    t.start()
+    t.join(timeout=600)
+    if _err[0]:
+        raise _err[0]
+    return _res[0]
 
 # Load environment variables
 load_dotenv()
@@ -214,8 +240,32 @@ def apply_global_styles():
             border: 1px solid #2d3748 !important;
             margin-bottom: 0.5rem;
         }
+
+        /* ── Mobile responsive ── */
+        @media (max-width: 768px) {
+            .block-container { padding: 0.5rem !important; }
+            [data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; gap: 4px !important; }
+            [data-testid="stHorizontalBlock"] > div { min-width: 60px !important; flex: 1 1 auto !important; }
+            .stButton > button { font-size: 11px !important; padding: 6px 4px !important; min-height: 36px; }
+            h1 { font-size: 1.4rem !important; }
+            h2 { font-size: 1.1rem !important; }
+            .stDataFrame { font-size: 12px !important; }
+        }
     </style>
     """, unsafe_allow_html=True)
+    st.markdown("""
+<link rel="manifest" href="/manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ORVA">
+<meta name="theme-color" content="#10b981">
+<script>
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js');
+}
+</script>
+""", unsafe_allow_html=True)
 
 
 def apply_ai_page_styles():
@@ -1023,7 +1073,11 @@ search_building_names      → Fuzzy search if building name is unclear
 start_whatsapp_campaign    → Send WhatsApp messages to a filtered owner list
 open_whatsapp              → Open WhatsApp Web in Chrome
 
-RULE: Use exactly 1 tool per response turn. Do not chain tool calls unless the first returns no data.
+TOOL USAGE RULES
+- Default: 1 tool per response turn.
+- EXCEPTION — Comparisons: When user asks to compare 2 buildings (e.g. "Shoreline vs Oceana", "Palm Views East vs West"), call the tool TWICE (once per building) and present results side by side.
+- EXCEPTION — Yield at asking price: call get_bayut_listings for the asking price → then call get_rental_intel for current rent → compute (annual_rent / asking_price) × 100 = gross yield.
+- EXCEPTION — Both Bayut & PF: when user asks who is listed on both platforms, call get_propertyfinder_listings first (has owner contacts), then get_bayut_listings to cross-check supply.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 DATA SOURCES — WHAT EACH CONTAINS
@@ -1070,7 +1124,7 @@ BUILDING NAME HANDLING
 Fuzzy matching is built in. Examples:
 - "Shoreline 9" / "Al Masalli" → Al Masalli (Tower 9)
 - "Fairmont" → The Fairmont Palm Residences
-- "The 8" → The Crescent (matched via unit numbers)
+- "The 8" / "The Eight" → Eight at Palm Jumeirah
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 UNIT NUMBER SCHEMAS
@@ -1108,6 +1162,9 @@ PRICING RULES
 - <3 transactions in 6 months → expand to 12 months and note it
 - Gross Rental Yield = (Annual Rent / Purchase Price) × 100
 - Typical Palm Jumeirah yields: 5–8% for apartments
+- Budget search (e.g. "what can I get for AED 2M"): use get_bayut_listings with max_price=<AED value> to see everything available under that budget
+- Highly motivated sellers: use get_propertyfinder_listings and look for pf_listing_count ≥ 3 in results — highlight those owners
+- Tenants who just moved out / new tenants only: use get_rental_intel with query_type="rental_history" and note entries with rent_recurrence="New Contract" — these owners have high turnover
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 RESPONSE FORMATTING
@@ -1122,6 +1179,16 @@ Lease intelligence:
 - "Renewal" = same tenant renewed → stable, less likely to sell
 - "New Contract" = new tenant → higher turnover, owner may be tired, open to selling
 - Expiring in 1–3 months = HOT lead
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DATA LIMITATIONS — WHAT WE CANNOT DO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Nationality / origin of owner: NOT available. Cannot find "Russian", "British", or "Chinese" owners.
+- Listing age / days on market: NOT in data. PF and Bayut scraped data has no listing date. Cannot answer "listed 90+ days".
+- Who hasn’t been contacted yet: NOT tracked here. The WhatsApp log is separate from this system.
+- Sea view vs non-sea view pricing from title deeds: CANNOT DO — title deeds have no view data. For view info use get_unit_info on specific units.
+- Cross-building rankings (e.g. "which building has best yield across all Palm", "most price growth"): NOT possible — tools are per-building only. If asked, say so and offer to check specific buildings the user names.
+- Portfolio owners across all buildings (no building specified): ask the user to name a building, or use get_owner_portfolio if the owner name is known.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 HARD RULES
@@ -1544,12 +1611,25 @@ def render_lead_search_page():
             if st.button("PF Scraper", key="tools_pf_btn", help="PropertyFinder + permit scraper", use_container_width=True):
                 st.session_state.current_page = 'pf_scraper'
                 st.rerun()
-            if st.button("PM Scraper", key="tools_pm_btn", help="Property Monitor scrapers", use_container_width=True):
-                st.session_state.current_page = 'property_monitor'
+            if st.button("Reidin Sync", key="tools_reidin_btn", help="Scrape live from Reidin → Priority 1.5 data", use_container_width=True):
+                st.session_state.current_page = 'reidin_sync'
                 st.rerun()
             if st.button("Matcher", key="tools_matcher_btn", help="Match listings to owners", use_container_width=True):
                 st.session_state.current_page = 'listing_matcher'
                 st.rerun()
+            st.divider()
+            st.caption("Reidin — Chrome port 9222")
+            _bat_path = Path(r"C:\Users\thema\OneDrive\Desktop\ORVA\Run_Reidin_Scraper.bat")
+            if st.button("Launch Reidin Chrome", key="tools_reidin_chrome_btn", help="Open Chrome on port 9222 ready for Reidin scraping", use_container_width=True):
+                if _bat_path.exists():
+                    subprocess.Popen(
+                        ["cmd", "/c", "start", "", str(_bat_path)],
+                        shell=False,
+                        cwd=str(_bat_path.parent),
+                    )
+                    st.success("Launching… log in to Reidin, then use Reidin Sync.")
+                else:
+                    st.error(f"I could not find the .bat file at: {_bat_path}")
             st.divider()
             st.caption("Bayut Refresh — Chrome port 9222")
             refresh_type = st.radio("Type", ["Both", "Sale", "Rent"], horizontal=True, key="tools_refresh_type")
@@ -1575,6 +1655,9 @@ def render_lead_search_page():
                 st.rerun()
             if st.button("System Health", key="tools_health_btn", use_container_width=True):
                 st.session_state.current_page = 'health_check'
+                st.rerun()
+            if st.button("Photos", key="photo_tools_button", use_container_width=True):
+                st.session_state.current_page = 'watermark_remover'
                 st.rerun()
 
     with nav_bayut:
@@ -3379,26 +3462,115 @@ def render_lease_expiry_page():
 def render_whatsapp_page():
     """Render WhatsApp campaign management page."""
     apply_global_styles()
-    
+
+    # Auto-fetch status for both accounts on page load.
+    # Decode and cache QR bytes from the status JSON so they survive Streamlit reruns.
+    for _port in ["3001", "3002"]:
+        if f'wa_baileys_status_{_port}' not in st.session_state:
+            try:
+                _r = requests.get(f"http://127.0.0.1:{_port}/status", timeout=2)
+                _rj = _r.json()
+                st.session_state[f'wa_baileys_status_{_port}'] = _rj
+                if _rj.get('qr_b64'):
+                    import base64 as _b64
+                    st.session_state[f'wa_qr_bytes_{_port}'] = _b64.b64decode(_rj['qr_b64'])
+                elif _rj.get('connected'):
+                    st.session_state.pop(f'wa_qr_bytes_{_port}', None)
+            except Exception:
+                st.session_state[f'wa_baileys_status_{_port}'] = {'connected': False, 'qr_available': False, 'error': 'Server not reachable'}
+
     # Header
-    header_col1, header_col2, header_col3 = st.columns([4, 1.5, 1])
-    
+    header_col1, header_col2, header_col3 = st.columns([3.5, 2, 1])
+
     with header_col1:
         st.title(" WhatsApp Outreach")
         st.caption("Campaign builder and message log")
-    
+
     with header_col2:
-        if st.button("Open WhatsApp", type="primary", use_container_width=True, help="Launch Chrome with WhatsApp Web (debug port 9222). Log in there, then run campaigns."):
-            root = Path(__file__).resolve().parent
-            ps1 = root / "whatsapp_bot" / "start_whatsapp_chrome.ps1"
-            if ps1.exists():
-                subprocess.Popen(
-                    ["powershell", "-ExecutionPolicy", "Bypass", "-File", str(ps1)],
-                    cwd=str(root),
+        _WA_PORTS = {"Number 1 (port 3001)": "3001", "Number 2 (port 3002)": "3002"}
+        _wa_acct_label = st.selectbox("WhatsApp Account", list(_WA_PORTS.keys()), key="wa_account_select", label_visibility="collapsed")
+        _wa_port = _WA_PORTS[_wa_acct_label]
+        _wa_acct_num = "1" if _wa_port == "3001" else "2"
+        _baileys_base = f"http://127.0.0.1:{_wa_port}"
+        st.session_state['wa_active_account'] = _wa_acct_num
+
+        if st.button("🔄 Refresh Status", type="primary", use_container_width=True, key="wa_refresh_btn"):
+            try:
+                r = requests.get(f"{_baileys_base}/status", timeout=3)
+                st.session_state[f'wa_baileys_status_{_wa_port}'] = r.json()
+            except requests.exceptions.ConnectionError:
+                st.session_state[f'wa_baileys_status_{_wa_port}'] = {'connected': False, 'qr_available': False, 'error': 'WhatsApp server not running'}
+            except Exception as e:
+                st.session_state[f'wa_baileys_status_{_wa_port}'] = {'connected': False, 'qr_available': False, 'error': str(e)}
+
+        _ws = st.session_state.get(f'wa_baileys_status_{_wa_port}')
+        if _ws is None:
+            st.caption("Click Refresh Status")
+        elif _ws.get('connected'):
+            st.success(f"🟢 Connected — {_ws.get('phone', 'active')}")
+            st.session_state.pop(f'wa_link_code_{_wa_port}', None)
+        else:
+            st.error("🔴 Not connected")
+
+        # ── Link with Phone Number (replaces QR scan) ────────────────────────
+        # QR codes rotate every 20s — too fast to scan reliably.
+        # Phone number linking gives an 8-char code valid for ~160 seconds.
+        if not (_ws or {}).get('connected'):
+            _lc = st.session_state.get(f'wa_link_code_{_wa_port}')
+            if _lc:
+                st.markdown(
+                    f"<div style='background:#1a2e1a;border:2px solid #10b981;border-radius:8px;"
+                    f"padding:12px 8px;text-align:center;margin-top:6px'>"
+                    f"<div style='color:#6b7280;font-size:0.7em;margin-bottom:4px'>Enter this code in WhatsApp → Linked Devices → Link a Device → Link with phone number</div>"
+                    f"<div style='color:#10b981;font-size:1.8em;font-weight:700;letter-spacing:4px'>{_lc}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
                 )
-                st.success("Chrome is opening — log in to WhatsApp Web.")
+                if st.button("🔁 Get New Code", use_container_width=True, key="wa_newcode_btn"):
+                    st.session_state.pop(f'wa_link_code_{_wa_port}', None)
+                    st.rerun()
             else:
-                st.error("WhatsApp launcher script not found.")
+                _ph_input = st.text_input(
+                    "Your WhatsApp number (international)",
+                    placeholder="971501234567",
+                    key=f"wa_phone_input_{_wa_port}",
+                    label_visibility="collapsed",
+                )
+                if st.button("📱 Get Link Code", type="primary", use_container_width=True, key="wa_getcode_btn"):
+                    _pn = (_ph_input or "").strip().lstrip("+")
+                    if not _pn:
+                        st.warning("Enter your phone number first")
+                    else:
+                        try:
+                            _start_resp = requests.post(
+                                f"{_baileys_base}/link/start",
+                                json={"phone_number": _pn},
+                                timeout=5,
+                            ).json()
+                            if _start_resp.get("error"):
+                                st.error(f"Failed to start: {_start_resp['error']}")
+                            else:
+                                import time as _t
+                                _sb = st.empty()
+                                for _i in range(30):  # poll up to 90s
+                                    _t.sleep(3)
+                                    try:
+                                        _ls = requests.get(f"{_baileys_base}/link/status", timeout=3).json()
+                                    except Exception:
+                                        _ls = {}
+                                    if _ls.get("link_code"):
+                                        st.session_state[f'wa_link_code_{_wa_port}'] = _ls["link_code"]
+                                        st.rerun()
+                                        break
+                                    elif _ls.get("error"):
+                                        _sb.error(f"Failed: {_ls['error']}")
+                                        break
+                                    else:
+                                        _sb.info(f"⏳ Waiting for WhatsApp Web… ({(_i+1)*3}s)")
+                                else:
+                                    _sb.error("Timed out after 90s — try again")
+                        except Exception as _e:
+                            st.error(f"Error: {_e}")
     
     with header_col3:
         if st.button("← Lead Search", use_container_width=True):
@@ -3406,9 +3578,40 @@ def render_whatsapp_page():
             st.rerun()
     
     st.divider()
-    
+
+    # ── Live Telemetry Panel ─────────────────────────────────────────────────
+    _status_file = Path(__file__).parent / "data" / "wa_status.json"
+    try:
+        _tel = json.loads(_status_file.read_text()) if _status_file.exists() else None
+    except Exception:
+        _tel = None
+    with st.expander("📡 Live Activity Log", expanded=True):
+        if _tel:
+            _tel_c1, _tel_c2 = st.columns([3, 1])
+            with _tel_c1:
+                _action_ts = _tel.get("last_action_at", "")[:19].replace("T", " ")
+                st.markdown(
+                    f"**Last action:** {_tel.get('last_action', '—')} "
+                    f"<span style='color:#6b7280;font-size:0.8em'>({_action_ts} UTC)</span>",
+                    unsafe_allow_html=True,
+                )
+                if _tel.get("last_error"):
+                    st.caption(f"⚠️ Last error: {_tel['last_error']}")
+            with _tel_c2:
+                st.metric("Messages today", _tel.get("messages_today", 0))
+            _log = _tel.get("log", [])
+            if _log:
+                st.markdown(
+                    "<div style='font-size:0.78em;color:#9ca3af;line-height:1.6'>"
+                    + "<br>".join(_log[:10])
+                    + "</div>",
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.caption("No activity yet — start a campaign to see live updates here.")
+
     # Tab layout
-    tab1, tab2, tab3 = st.tabs(["↑ New Campaign", " Statistics", " Message Log"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["↑ New Campaign", " Statistics", " Message Log", "📋 Outreach Tracker", "📥 WA Inbox"])
     
     # =========================================================================
     # TAB 1: NEW CAMPAIGN BUILDER
@@ -3418,14 +3621,15 @@ def render_whatsapp_page():
         
         campaign_type = st.radio(
             "Campaign Type",
-            options=['landlord_lease_expiry', 'cold_owner', 'recent_sale', 'portfolio_owner', 'active_seller', 'active_renter'],
+            options=['landlord_lease_expiry', 'cold_owner', 'recent_sale', 'portfolio_owner', 'active_seller', 'active_renter', 'propspace_leads'],
             format_func=lambda x: {
-                'landlord_lease_expiry': ' Landlord Lease Expiry',
-                'cold_owner': ' Cold Owner Outreach',
-                'recent_sale': ' Recent Sale Follow-up',
-                'portfolio_owner': ' Portfolio Owner Outreach',
-                'active_seller': ' Actively Selling (PropertyFinder)',
-                'active_renter': ' Actively Renting (PropertyFinder)'
+                'landlord_lease_expiry': '🟢 Landlord Lease Expiry',
+                'cold_owner': '🟢 Cold Owner Outreach',
+                'recent_sale': '🟢 Recent Sale Follow-up',
+                'portfolio_owner': '🟢 Portfolio Owner Outreach',
+                'active_seller': '🟢 Actively Selling (PropertyFinder)',
+                'active_renter': '🟢 Actively Renting (PropertyFinder)',
+                'propspace_leads': '🟢 PropSpace Leads (Warm Buyers/Tenants)'
             }[x]
         )
         
@@ -3493,9 +3697,30 @@ def render_whatsapp_page():
                 step=1,
                 help="Only message owners with at least this many units"
             )
+        elif campaign_type == 'propspace_leads':
+            portfolio_only = False
+            min_units = 3
+            _ps_path = Path(__file__).resolve().parent / 'scraped_data' / 'propspace_leads.csv'
+            if _ps_path.exists():
+                import pandas as _pd
+                _ps_df = _pd.read_csv(_ps_path, encoding='utf-8', dtype=str)
+                _n_total = len(_ps_df)
+                _n_tenant = len(_ps_df[_ps_df.get('lead_type', _pd.Series()).str.strip().str.lower() == 'tenant']) if 'lead_type' in _ps_df.columns else 0
+                _n_buyer = len(_ps_df[_ps_df.get('lead_type', _pd.Series()).str.strip().str.lower() == 'buyer']) if 'lead_type' in _ps_df.columns else 0
+                st.info(f"🎯 **{_n_total} leads scraped** — {_n_tenant} tenants, {_n_buyer} buyers. Apply your filters below.")
+            else:
+                st.warning("No PropSpace leads found. Run: `python propspace_scraper/run_propspace_scrape.py`")
+            ps_lead_type = st.selectbox("Lead Type", options=['Both', 'Tenant', 'Buyer'], key="ps_lead_type")
+            ps_not_yet = st.checkbox("Not yet contacted only (unreliable)", value=False, key="ps_not_yet",
+                                     help="Only leads with sub_status = Not yet contacted")
         else:
             portfolio_only = False
             min_units = 3
+        
+        # Defaults for propspace-only vars (avoids NameError when other campaign selected)
+        if campaign_type != 'propspace_leads':
+            ps_lead_type = 'Both'
+            ps_not_yet = False
         
         limit = st.number_input(
             "Limit (optional)",
@@ -3507,6 +3732,8 @@ def render_whatsapp_page():
         
         dry_run = st.checkbox("Dry run (preview only, no messages sent)", value=False, key="wa_dry_run")
         override_limit = st.checkbox("Override limit (skip ramp-up, use full daily cap)", value=False, key="wa_override")
+        no_limits = st.checkbox("No limits (skip all delays and caps, send continuously)", value=False, key="wa_no_limits",
+            help="Sends messages back-to-back with only a 3s gap. Use for targeted building blasts. Stop anytime with Ctrl+C in the console.")
         
         # Single / custom message (e.g. one question to all)
         use_custom_message = st.checkbox(
@@ -3528,7 +3755,7 @@ def render_whatsapp_page():
         # Message templates editor
         from whatsapp_bot.message_templates import get_editable_templates, get_active_template_sets, save_custom_templates
         with st.expander("Message templates (edit and save to use when starting campaign)"):
-            st.caption("Placeholders: {name}, {building}, {unit}, {bedrooms}. For portfolio_owner: {name}, {unit_count}, {buildings}.")
+            st.caption("Placeholders: {name}, {building}, {unit}, {bedrooms}. For portfolio_owner: {name}, {unit_count}, {buildings}. For propspace_tenant/buyer: {name}, {building}.")
             all_templates = get_editable_templates()
             active_sets = get_active_template_sets()
             keys_for_type = (
@@ -3537,6 +3764,7 @@ def render_whatsapp_page():
                 ['recent_sale'] if campaign_type == 'recent_sale' else
                 ['portfolio_owner'] if campaign_type == 'portfolio_owner' else
                 ['active_seller'] if campaign_type == 'active_seller' else
+                ['propspace_tenant', 'propspace_buyer'] if campaign_type == 'propspace_leads' else
                 ['active_renter']
             )
             if 'wa_extra_template_slots' not in st.session_state:
@@ -3636,6 +3864,13 @@ def render_whatsapp_page():
                     cmd.append("--dry-run")
                 if override_limit:
                     cmd.append("--override-limit")
+                if no_limits:
+                    cmd.append("--no-limits")
+                if campaign_type == 'propspace_leads':
+                    if ps_lead_type != 'Both':
+                        cmd.extend(['--lead-type', ps_lead_type.lower()])
+                    if ps_not_yet:
+                        cmd.append('--not-yet-contacted')
                 if use_custom_message and custom_message_text and custom_message_text.strip():
                     custom_msg_file = root / "whatsapp_bot" / "custom_message.txt"
                     custom_msg_file.write_text(custom_message_text.strip(), encoding="utf-8")
@@ -3675,19 +3910,16 @@ def render_whatsapp_page():
         if st.session_state.get('preview_queue', False):
             st.markdown("---")
             st.markdown("### Queue Preview")
-            
             with st.spinner("Building queue..."):
-                # Import here to avoid circular imports at module load
                 sys.path.insert(0, str(Path(__file__).resolve().parent / 'whatsapp_bot'))
                 from whatsapp_bot.campaign_manager import (
                     build_landlord_lease_expiry_queue, build_cold_owner_queue,
                     build_recent_sale_queue, build_portfolio_owner_queue,
                     build_active_seller_queue, build_active_renter_queue,
+                    build_propspace_leads_queue,
                     apply_dedup_to_queue, generate_messages_for_queue, shuffle_queue
                 )
-                
                 area_arg = (area_filter if (area_filter and area_filter != 'All') else None)
-                # Build queue
                 if campaign_type == 'landlord_lease_expiry':
                     queue = build_landlord_lease_expiry_queue(
                         days_ahead=days_ahead,
@@ -3722,6 +3954,14 @@ def render_whatsapp_page():
                         limit=limit if limit else None,
                         area_filter=area_arg
                     )
+                elif campaign_type == 'propspace_leads':
+                    _lt = ps_lead_type.lower() if ps_lead_type != 'Both' else None
+                    queue = build_propspace_leads_queue(
+                        location=building_filter if building_filter else None,
+                        lead_type=_lt,
+                        sub_status_filter='new' if ps_not_yet else 'all',
+                        limit=limit if limit else None,
+                    )
                 else:
                     queue = build_cold_owner_queue(
                         building_filter=building_filter if building_filter else None,
@@ -3730,36 +3970,104 @@ def render_whatsapp_page():
                         limit=limit if limit else None,
                         area_filter=area_arg
                     )
-                
-                # Apply dedup
                 queue = apply_dedup_to_queue(queue, days_window=30)
-                
-                # Generate messages (or single custom message)
                 if use_custom_message and custom_message_text and custom_message_text.strip():
                     msg = custom_message_text.strip()
                     for item in queue:
-                        item['message'] = msg
+                        from whatsapp_bot.message_templates import format_first_name as _ffn2
+                        _fn2 = _ffn2(item.get('owner_name', '')) or 'there'
+                        item['message'] = (msg
+                            .replace('{name}', _fn2)
+                            .replace('{unit}', str(item.get('unit', '') or ''))
+                            .replace('{building}', str(item.get('building', '') or ''))
+                            .replace('{phone}', str(item.get('phone', '') or ''))
+                        )
                         item['template_type'] = 'custom'
                 else:
                     queue = generate_messages_for_queue(queue)
-                
                 if not queue:
                     st.warning("Queue is empty after filters and dedup.")
+                    st.session_state['wa_queue'] = None
                 else:
-                    st.success(f"**{len(queue)} messages ready to send**")
-                    if use_custom_message and custom_message_text and custom_message_text.strip():
-                        st.info("Single message mode: every contact will receive the same text below.")
-                    # Show sample messages
-                    preview_count = min(5, len(queue))
-                    for i, item in enumerate(queue[:preview_count], 1):
-                        with st.expander(f"[{i}] {item['owner_name']} — {item['building']} Unit {item['unit']}"):
-                            st.text(item['message'])
-                            st.caption(f"Phone: {format_phone_for_whatsapp(item['phone'])} | Template: {item['template_type']}")
-                    
-                    if len(queue) > preview_count:
-                        st.info(f"... and {len(queue) - preview_count} more messages")
-            
+                    st.session_state['wa_queue'] = queue
+                    st.session_state['wa_excluded'] = set()
             st.session_state['preview_queue'] = False
+
+        if st.session_state.get('wa_queue'):
+            _q = st.session_state['wa_queue']
+            st.markdown("---")
+            st.markdown(f"### Queue - {len(_q)} contacts ready")
+            st.caption("Uncheck contacts you do NOT want to message, then click Confirm & Send.")
+            if 'wa_excluded' not in st.session_state:
+                st.session_state['wa_excluded'] = set()
+            _c1, _c2, _c3 = st.columns([1, 1, 4])
+            if _c1.button("Select All", key="wa_sel_all"):
+                st.session_state['wa_excluded'] = set()
+                st.rerun()
+            if _c2.button("Deselect All", key="wa_desel_all"):
+                st.session_state['wa_excluded'] = {_qi['phone'] for _qi in _q}
+                st.rerun()
+            for _qi in _q:
+                _qph = _qi['phone']
+                _checked = _qph not in st.session_state['wa_excluded']
+                _qlbl = f"{_qi.get('owner_name','?')} - {_qi.get('building','')} Unit {_qi.get('unit','')} | {_qph}"
+                _nv = st.checkbox(_qlbl, value=_checked, key=f"wa_chk_{_qph}")
+                if _nv:
+                    st.session_state['wa_excluded'].discard(_qph)
+                else:
+                    st.session_state['wa_excluded'].add(_qph)
+            _excl = st.session_state['wa_excluded']
+            _will_send = len(_q) - len(_excl)
+            st.caption(f"**{_will_send} will be sent** | {len(_excl)} excluded")
+            _cc1, _cc2 = st.columns(2)
+            with _cc1:
+                if st.button(f"Confirm & Send ({_will_send})", type="primary", key="wa_confirm_send", disabled=_will_send == 0):
+                    import json as _json
+                    _root2 = Path(__file__).resolve().parent
+                    _excl_file = _root2 / "whatsapp_bot" / "excluded_phones.json"
+                    _excl_file.write_text(_json.dumps(list(_excl)), encoding="utf-8")
+                    _cmd = [sys.executable, str(_root2 / "whatsapp_bot" / "run_campaign.py"),
+                            "--type", campaign_type, "--days", str(days_ahead)]
+                    if building_filter:
+                        _cmd.extend(["--building", building_filter])
+                    if bedrooms_filter != "All":
+                        _cmd.extend(["--bedrooms", bedrooms_filter])
+                    if area_filter and area_filter != "All":
+                        _cmd.extend(["--area", area_filter])
+                    if portfolio_only:
+                        _cmd.append("--portfolio-only")
+                    if campaign_type == "portfolio_owner" and min_units != 3:
+                        _cmd.extend(["--min-units", str(min_units)])
+                    if limit:
+                        _cmd.extend(["--limit", str(limit)])
+                    if override_limit:
+                        _cmd.append("--override-limit")
+                    if no_limits:
+                        _cmd.append("--no-limits")
+                    if campaign_type == 'propspace_leads':
+                        if ps_lead_type != 'Both':
+                            _cmd.extend(['--lead-type', ps_lead_type.lower()])
+                        if ps_not_yet:
+                            _cmd.append('--not-yet-contacted')
+                    if use_custom_message and custom_message_text and custom_message_text.strip():
+                        _cmf = _root2 / "whatsapp_bot" / "custom_message.txt"
+                        _cmf.write_text(custom_message_text.strip(), encoding="utf-8")
+                        _cmd.extend(["--custom-message-file", "custom_message.txt"])
+                    _cmd.extend(["--exclude-file", "excluded_phones.json"])
+                    _flags = subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0
+                    _cwd2 = str(_root2 / "whatsapp_bot")
+                    if sys.platform == "win32":
+                        subprocess.Popen(["cmd", "/k", sys.executable] + _cmd[1:], cwd=_cwd2, creationflags=_flags)
+                    else:
+                        subprocess.Popen(_cmd, cwd=_cwd2, creationflags=_flags)
+                    st.success(f"Campaign started - {_will_send} messages queued. Watch the new window.")
+                    st.session_state['wa_queue'] = None
+                    st.session_state['wa_excluded'] = set()
+            with _cc2:
+                if st.button("Clear Preview", key="wa_clear_preview"):
+                    st.session_state['wa_queue'] = None
+                    st.session_state['wa_excluded'] = set()
+                    st.rerun()
     
     # =========================================================================
     # TAB 2: STATISTICS
@@ -3837,6 +4145,8 @@ def render_whatsapp_page():
         
         log_limit = st.slider("Show last N messages", min_value=10, max_value=500, value=50, step=10)
         
+        search_q = st.text_input("Search by name, building, or phone", key="msg_log_search", placeholder="e.g. Ahmed, Shoreline, 971501...")
+
         messages = get_recent_messages(limit=log_limit)
         
         if not messages:
@@ -3853,17 +4163,53 @@ def render_whatsapp_page():
             if 'message' in log_df.columns:
                 log_df['message_preview'] = log_df['message'].str[:60] + '...'
             
+            # Load PF listing URLs and join by (building, unit)
+            try:
+                _pf_path = Path(__file__).resolve().parent / 'scraped_data' / 'propertyfinder_scraped_leads.csv'
+                if _pf_path.exists():
+                    _pf = pd.read_csv(_pf_path, dtype=str).fillna('')
+                    _listing_map = {}
+                    for _, _pr in _pf.iterrows():
+                        _k = (str(_pr.get('building_name','')).lower().strip(),
+                              str(_pr.get('unit_number','')).lower().strip())
+                        if _k[0] and _k[1] and _pr.get('listing_url',''):
+                            _listing_map[_k] = _pr['listing_url']
+                    log_df['listing_url'] = log_df.apply(
+                        lambda r: _listing_map.get(
+                            (str(r.get('building','')).lower().strip(),
+                             str(r.get('unit','')).lower().strip()), ''
+                        ), axis=1
+                    )
+                else:
+                    log_df['listing_url'] = ''
+            except Exception:
+                log_df['listing_url'] = ''
+
             display_cols = [
                 'timestamp', 'owner_name', 'building', 'unit', 
-                'phone', 'template_type', 'status', 'message_preview'
+                'phone', 'template_type', 'status', 'message_preview', 'listing_url'
             ]
             display_cols = [c for c in display_cols if c in log_df.columns]
+
+            # Apply search filter
+            if search_q and search_q.strip():
+                _q = search_q.strip().lower()
+                _mask = (
+                    log_df.get('owner_name', pd.Series([''] * len(log_df))).str.lower().str.contains(_q, na=False) |
+                    log_df.get('building', pd.Series([''] * len(log_df))).str.lower().str.contains(_q, na=False) |
+                    log_df.get('phone', pd.Series([''] * len(log_df))).str.lower().str.contains(_q, na=False)
+                )
+                log_df = log_df[_mask]
+                st.caption(f"{len(log_df)} result(s) matching '{search_q}'")
             
             st.dataframe(
                 log_df[display_cols],
                 use_container_width=True,
                 hide_index=True,
-                height=600
+                height=600,
+                column_config={
+                    'listing_url': st.column_config.LinkColumn('Listing', display_text='Open')
+                }
             )
             
             # Export button
@@ -3874,6 +4220,273 @@ def render_whatsapp_page():
                 file_name=f"whatsapp_log_{datetime.now().strftime('%Y%m%d')}.csv",
                 mime="text/csv"
             )
+
+    # =========================================================================
+    with tab4:
+        st.markdown("### Outreach Tracker")
+        st.caption("One row per unique contact — most recent interaction shown. Refresh page to update.")
+
+        tracker_df = _load_outreach_tracker()
+        if tracker_df.empty:
+            st.info("No messages sent yet.")
+        else:
+            total = len(tracker_df)
+            replied_count = int(tracker_df['replied'].sum())
+            propspace_count = int(tracker_df['template_type'].str.startswith('propspace', na=False).sum())
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Total Contacted", total)
+            c2.metric("Replied", replied_count)
+            c3.metric("Reply Rate", f"{replied_count/total*100:.0f}%" if total else "0%")
+            c4.metric("PropSpace Leads", propspace_count)
+
+            st.divider()
+
+            fc1, fc2, fc3 = st.columns(3)
+            with fc1:
+                reply_filter = st.selectbox("Reply Status", ["All", "Replied", "Not Replied"])
+            with fc2:
+                campaign_options = ["All"] + sorted(tracker_df['template_type'].dropna().unique().tolist())
+                campaign_filter = st.selectbox("Campaign Type", campaign_options)
+            with fc3:
+                search_name = st.text_input("Search name / building", "")
+
+            view = tracker_df.copy()
+            if reply_filter == "Replied":
+                view = view[view['replied'] == True]
+            elif reply_filter == "Not Replied":
+                view = view[view['replied'] == False]
+            if campaign_filter != "All":
+                view = view[view['template_type'] == campaign_filter]
+            if search_name:
+                mask = (
+                    view['owner_name'].str.contains(search_name, case=False, na=False) |
+                    view['building'].str.contains(search_name, case=False, na=False)
+                )
+                view = view[mask]
+
+            def _make_enquiry(row):
+                sub_loc = str(row.get('sub_location', '')).strip()
+                if sub_loc and sub_loc not in ('', 'nan'):
+                    parts = [sub_loc]
+                    beds = str(row.get('beds_min', '')).strip()
+                    if beds and beds not in ('', 'nan'):
+                        parts.append('Studio' if beds == '0' else f'{beds}-bed')
+                    budget = str(row.get('budget_max', '')).strip()
+                    if budget and budget not in ('', 'nan', '0'):
+                        try:
+                            parts.append(f"AED {int(float(budget)):,}")
+                        except Exception:
+                            pass
+                    return ' · '.join(parts)
+                unit = str(row.get('unit', '')).strip()
+                bldg = str(row.get('building', '')).strip()
+                return f"{bldg} {unit}".strip() if unit and unit not in ('', 'nan') else bldg
+
+            view = view.copy()
+            view['Enquired On'] = view.apply(_make_enquiry, axis=1)
+            view['Replied'] = view['replied'].map({True: '✅ Yes', False: '—'})
+            view['Contacted'] = pd.to_datetime(view['timestamp']).dt.strftime('%d %b %Y')
+            view['Lead Type'] = view['lead_type'].fillna('') if 'lead_type' in view.columns else ''
+
+            display = view[['owner_name', 'phone', 'Enquired On', 'Lead Type',
+                             'template_type', 'Contacted', 'status', 'Replied']].rename(columns={
+                'owner_name': 'Name',
+                'phone': 'Phone',
+                'template_type': 'Campaign',
+                'status': 'Send Status',
+            })
+
+            st.dataframe(display, use_container_width=True, hide_index=True, height=600)
+
+            csv_tracker = display.to_csv(index=False, encoding='utf-8')
+            st.download_button(
+                "↓ Export Tracker CSV",
+                data=csv_tracker,
+                file_name=f"outreach_tracker_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
+
+        with tab5:
+            st.markdown("### WA Inbox - Chat Scanner")
+            
+            col_s, col_t = st.columns([2, 1])
+            with col_s:
+                _scan_btn = st.button("Scan WhatsApp Chats", key="wa_scan_btn")
+            with col_t:
+                _fdays = st.number_input("Follow-up days", min_value=1, max_value=30, value=3, key="wa_fdays")
+            
+            if _scan_btn:
+                _pb = st.progress(0)
+                _stxt = st.empty()
+                _stxt.text("Starting scan...")
+                try:
+                    _proc = subprocess.Popen(
+                        [sys.executable, str(Path(__file__).resolve().parent / 'whatsapp_bot' / 'run_scan.py')],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                        text=True, cwd=str(Path(__file__).resolve().parent), encoding='utf-8', errors='replace'
+                    )
+                    _scan_count = 0
+                    for _line in _proc.stdout:
+                        _line = _line.strip()
+                        if _line.startswith('PROGRESS:'):
+                            _parts = _line.split(':', 2)
+                            _done = int(_parts[1].split('/')[0])
+                            _total = int(_parts[1].split('/')[1])
+                            _nm0 = _parts[2] if len(_parts) > 2 else ''
+                            _pb.progress(_done / max(_total, 1))
+                            _stxt.text(f'Scanning {_done}/{_total}: {_nm0}')
+                            _scan_count = _total
+                        elif _line.startswith('DONE:'):
+                            _scan_count = int(_line.split(':')[1])
+                    _proc.wait()
+                    if _proc.returncode == 0:
+                        _stxt.success(f'Scanned {_scan_count} chats.')
+                        st.cache_data.clear()
+                    else:
+                        _err_out = _proc.stderr.read()[-400:] if _proc.stderr else ''
+                        _stxt.error(f'Scan failed: {_err_out}')
+                except Exception as _ex:
+                    st.error(f'Scan error: {type(_ex).__name__}: {_ex}')
+
+            from whatsapp_bot.chat_scans import load_scans, update_contact_type as _upd_cat
+            _scans = load_scans()
+            # Bedroom lookup from leads_master (cached)
+            try:
+                _ld2, _ = load_data(_pf_mtime=_pf_csv_mtime(), _pq_mtime=_parquet_mtime())
+                _bed_map = {}
+                if not _ld2.empty and 'Phone' in _ld2.columns and 'Bedrooms' in _ld2.columns:
+                    for _ph2, _br2 in zip(_ld2['Phone'].astype(str).str.strip(), _ld2['Bedrooms'].astype(str).str.strip()):
+                        if _ph2 and _br2 and _br2 != 'nan':
+                            _bed_map[_ph2] = _br2
+            except Exception:
+                _bed_map = {}
+            # PropSpace enquiry lookup
+            _ps_map = {}
+            try:
+                _ps_path2 = Path(__file__).resolve().parent / "scraped_data" / "propspace_leads.csv"
+                if _ps_path2.exists():
+                    _ps_df2 = pd.read_csv(_ps_path2, dtype=str).fillna("")
+                    _ps_df2["_pn"] = _ps_df2["phone"].str.replace(r"[^0-9]", "", regex=True)
+                    for _, _psr in _ps_df2.iterrows():
+                        _pk = _psr["_pn"]
+                        if _pk:
+                            _ps_map[_pk] = {
+                                "lead_type": _psr.get("lead_type", ""),
+                                "sub_location": _psr.get("sub_location", ""),
+                                "enquiry_date": _psr.get("enquiry_date", ""),
+                                "source": _psr.get("source", ""),
+                                "budget_min": _psr.get("budget_min", ""),
+                                "budget_max": _psr.get("budget_max", ""),
+                            }
+            except Exception:
+                _ps_map = {}
+            if _scans.empty:
+                st.info('No scans yet. Click Scan WhatsApp Chats to start.')
+            else:
+                _scans['incoming_count'] = _scans['incoming_count'].astype(int)
+                _scans['outgoing_count'] = _scans['outgoing_count'].astype(int)
+                _total = len(_scans)
+                _replied = int((_scans['incoming_count'] > 0).sum())
+                _no_rep = _total - _replied
+                _rate = f'{_replied/_total*100:.0f}%' if _total > 0 else '0%'
+                _m1, _m2, _m3, _m4 = st.columns(4)
+                _m1.metric('Total Scanned', _total)
+                _m2.metric('Replied', _replied)
+                _m3.metric('No Reply', _no_rep)
+                _m4.metric('Reply Rate', _rate)
+                _fc1, _fc2, _fc3 = st.columns([1,1,2])
+                with _fc1:
+                    _sf = st.selectbox('Status', ['All','Replied','No Reply'], key='wa_sf')
+                with _fc2:
+                    _cf = st.selectbox('Category', ['All','Landlord','Buyer','Tenant','Unset'], key='wa_cf')
+                with _fc3:
+                    _sq = st.text_input('Search name', key='wa_sq')
+                _df = _scans.copy()
+                if _sf == 'Replied': _df = _df[_df['incoming_count'] > 0]
+                elif _sf == 'No Reply': _df = _df[_df['incoming_count'] == 0]
+                if _cf == 'Unset': _df = _df[_df['contact_type'].fillna('') == '']
+                elif _cf != 'All': _df = _df[_df['contact_type'].str.lower() == _cf.lower()]
+                if _sq: _df = _df[_df['owner_name'].str.contains(_sq, case=False, na=False)]
+                st.caption(f'{len(_df)} contacts shown')
+                for _, _row in _df.iterrows():
+                    _ph = _row['phone']
+                    _nm = str(_row.get('owner_name','') or _ph)
+                    _inc = int(_row['incoming_count'])
+                    _out = int(_row['outgoing_count'])
+                    _lr = str(_row.get('last_reply_text',''))[:80]
+                    _lra = str(_row.get('last_reply_at',''))
+                    _ct = str(_row.get('contact_type','') or '')
+                    _bldg = str(_row.get('building', '') or '')
+                    _unit2 = str(_row.get('unit', '') or '')
+                    _beds = _bed_map.get(str(_ph), '')
+                    _prop_parts = [p for p in [_bldg, f'Unit {_unit2}' if _unit2 else '', f'{_beds}BR' if _beds and _beds != 'nan' else ''] if p]
+                    _prop_str = ' | '.join(_prop_parts)
+                    _lbl = f'{_nm} | {_prop_str} | {_inc}in/{_out}out | {_lra}' if _prop_str else f'{_nm} | {_inc}in/{_out}out | {_lra}'
+                    with st.expander(_lbl, expanded=False):
+                        _ec1, _ec2 = st.columns([3,1])
+                        with _ec1:
+                            if _lr: st.caption(f'Last reply: {_lr}')
+                            _ph_norm2 = re.sub(r'[^0-9]', '', str(_ph))
+                            _ps_info = _ps_map.get(_ph_norm2, {})
+                            if _ps_info.get('lead_type') or _ps_info.get('sub_location'):
+                                _bmin_s = _ps_info.get('budget_min', '')
+                                _bmax_s = _ps_info.get('budget_max', '')
+                                _budget_str = ''
+                                try:
+                                    if _bmax_s and _bmax_s not in ('', 'nan', '0'):
+                                        if _bmin_s and _bmin_s not in ('', 'nan', '0', _bmax_s):
+                                            _budget_str = f'AED {int(float(_bmin_s)):,}–{int(float(_bmax_s)):,}'
+                                        else:
+                                            _budget_str = f'AED {int(float(_bmax_s)):,}'
+                                except Exception:
+                                    pass
+                                _ps_line = ' | '.join(filter(None, [_ps_info.get('lead_type',''), _ps_info.get('sub_location',''), _budget_str, _ps_info.get('enquiry_date',''), _ps_info.get('source','')[:20] if _ps_info.get('source') else '']))
+                                st.caption(f'Enquiry: {_ps_line}')
+                            st.markdown(f'[Open in WhatsApp](https://web.whatsapp.com/send?phone={_ph})')
+                        with _ec2:
+                            _cats = ['','Landlord','Buyer','Tenant']
+                            _ci = _cats.index(_ct) if _ct in _cats else 0
+                            _nc = st.selectbox('Category', _cats, index=_ci, key=f'cat_{_ph}')
+                            if _nc != _ct:
+                                _upd_cat(_ph, _nc)
+                                st.rerun()
+                st.download_button('Download Scans CSV', data=_scans.to_csv(index=False), file_name='wa_inbox_scans.csv', mime='text/csv')
+# =========================================================================
+# TAB 4: OUTREACH TRACKER
+# =========================================================================
+
+@st.cache_data(ttl=60)
+def _load_outreach_tracker():
+    """Join message_log + reply_log + propspace_leads into one contact-per-row DataFrame."""
+    root = Path(__file__).resolve().parent
+    msg_path = root / 'whatsapp_bot' / 'message_log.csv'
+    reply_path = root / 'whatsapp_bot' / 'reply_log.csv'
+    ps_path = root / 'scraped_data' / 'propspace_leads.csv'
+
+    if not msg_path.exists():
+        return pd.DataFrame()
+
+    msg_df = pd.read_csv(msg_path, dtype=str).fillna('')
+    msg_df['timestamp'] = pd.to_datetime(msg_df['timestamp'], errors='coerce')
+    msg_df = msg_df.sort_values('timestamp')
+    contact_df = msg_df.groupby('phone', as_index=False).last()
+
+    if reply_path.exists():
+        reply_df = pd.read_csv(reply_path, dtype=str).fillna('')
+        replied_phones = set(reply_df['phone'].unique())
+    else:
+        replied_phones = set()
+    contact_df['replied'] = contact_df['phone'].isin(replied_phones)
+
+    if ps_path.exists():
+        ps_df = pd.read_csv(ps_path, dtype=str).fillna('')
+        ps_df['enquiry_date'] = pd.to_datetime(ps_df['enquiry_date'], errors='coerce', dayfirst=True)
+        ps_latest = ps_df.sort_values('enquiry_date').groupby('phone', as_index=False).last()
+        ps_cols = ['phone', 'lead_type', 'sub_location', 'beds_min', 'budget_max', 'source']
+        ps_latest = ps_latest[[c for c in ps_cols if c in ps_latest.columns]]
+        contact_df = contact_df.merge(ps_latest, on='phone', how='left', suffixes=('', '_ps'))
+
+    return contact_df
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -5406,6 +6019,179 @@ def render_bayut_listings_page():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# REIDIN UPLOAD PAGE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def render_reidin_sync_page():
+    """Reidin DLD — Live Sync (CDP scraper) with CSV upload fallback."""
+    apply_global_styles()
+
+    st.title("Reidin DLD — Sync")
+    st.caption("Scrape live from Reidin or upload a CSV export to activate Priority 1.5 in the bedroom cascade")
+
+    st.divider()
+
+    # Status banner
+    reidin_pq = Path("data/reidin_master.parquet")
+    reidin_csv_out = Path("data/reidin_master.csv")
+    reidin_file = reidin_pq if reidin_pq.exists() else (reidin_csv_out if reidin_csv_out.exists() else None)
+    if reidin_file:
+        try:
+            _rdf = pd.read_parquet(reidin_file) if str(reidin_file).endswith('.parquet') else pd.read_csv(reidin_file)
+            _last_mod = datetime.fromtimestamp(reidin_file.stat().st_mtime).strftime("%d %b %Y %H:%M")
+            st.success(
+                f"✓ Reidin DLD active — {len(_rdf):,} units across "
+                f"{_rdf['building_name'].nunique()} buildings · last synced {_last_mod}"
+            )
+        except Exception:
+            st.success("✓ Reidin DLD master file present")
+    else:
+        st.warning("⚠ No Reidin data yet — bedroom cascade falls through to Unit Registry at Priority 2")
+
+    st.divider()
+
+    tab_sync, tab_csv = st.tabs(["Live Sync", "CSV Upload"])
+
+    # ── Live Sync tab ────────────────────────────────────────────────────────
+    with tab_sync:
+        st.subheader("Prerequisites")
+        st.markdown(
+            "Before starting, make sure:\n"
+            "- Chrome is running with `--remote-debugging-port=9222`\n"
+            "- I am logged into **reidin.com** and on the **Sales Transactions** page\n"
+            "- Filters are applied (Palm Jumeirah, desired date range)"
+        )
+        st.divider()
+
+        progress_path = Path("data/reidin_progress.json")
+
+        # Show previous run summary if available
+        if progress_path.exists():
+            try:
+                _prev = json.loads(progress_path.read_text(encoding="utf-8"))
+                if _prev.get("status") == "done":
+                    st.info(
+                        f"Last run: **{_prev.get('rows', 0):,} rows** scraped across "
+                        f"**{_prev.get('page', 0)} pages** · {_prev.get('finished_at', '')}"
+                    )
+            except Exception:
+                pass
+
+        if st.button("Start Reidin Sync", type="primary", key="reidin_sync_btn", use_container_width=True):
+            # Clear stale progress file
+            if progress_path.exists():
+                progress_path.unlink()
+
+            cmd = [sys.executable, str(Path(__file__).resolve().parent / "reidin_extractor.py")]
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+            counter = st.empty()
+            log_box = st.empty()
+            log_lines: list[str] = []
+
+            # Poll progress while process runs
+            while proc.poll() is None:
+                # Read a line of stdout if available
+                try:
+                    line = proc.stdout.readline()
+                    if line:
+                        log_lines.append(line.rstrip())
+                        log_box.code("\n".join(log_lines[-8:]))
+                except Exception:
+                    pass
+                # Check progress JSON
+                if progress_path.exists():
+                    try:
+                        _prog = json.loads(progress_path.read_text(encoding="utf-8"))
+                        if _prog.get("status") == "running":
+                            counter.info(
+                                f"Extracting… page **{_prog['page']}** | **{_prog['rows']:,}** rows collected"
+                            )
+                        elif _prog.get("status") == "error":
+                            counter.error(_prog.get("error", "Unknown error"))
+                            break
+                    except Exception:
+                        pass
+
+            proc.wait()
+            counter.empty()
+            log_box.empty()
+
+            if proc.returncode != 0:
+                st.error("I encountered an error during extraction. Check that Chrome is running on port 9222 and I am on the Reidin Sales Transactions page.")
+            else:
+                # Run processor
+                with st.spinner("Normalising and saving to reidin_master.parquet…"):
+                    try:
+                        from reidin_processor import process_reidin_raw
+                        result = process_reidin_raw()
+                    except Exception as exc:
+                        st.error(f"I could not process the extracted data: {exc}")
+                        result = None
+
+                if result:
+                    for w in result.get("warnings", []):
+                        if w.startswith("ERROR"):
+                            st.error(w)
+                        else:
+                            st.warning(w)
+                    if result.get("output_path"):
+                        st.success(
+                            f"I synced **{result['rows_out']:,} units** across "
+                            f"**{result['buildings']} buildings**. "
+                            f"Priority 1.5 is active."
+                        )
+                        if st.button("Reload App Data", key="reidin_reload_after_sync"):
+                            st.cache_data.clear()
+                            st.rerun()
+
+    # ── CSV Upload tab (fallback) ────────────────────────────────────────────
+    with tab_csv:
+        st.subheader("CSV Upload")
+        st.caption("Fallback for when Reidin re-enables CSV exports. Expected columns: Project, Unit No, Bedrooms, Size, Contract Date, Amount")
+
+        uploaded = st.file_uploader("Select Reidin CSV export", type=["csv"], key="reidin_uploader")
+
+        if uploaded is not None:
+            try:
+                import io
+                df_raw = pd.read_csv(io.BytesIO(uploaded.read()), encoding="utf-8", low_memory=False, on_bad_lines="skip")
+                st.info(f"I loaded {len(df_raw):,} rows from **{uploaded.name}**. Columns: {', '.join(df_raw.columns[:8].tolist())}{'…' if len(df_raw.columns) > 8 else ''}")
+
+                if st.button("Process & Ingest", type="primary", key="reidin_process_btn"):
+                    with st.spinner("Normalising and saving..."):
+                        try:
+                            from reidin_processor import process_reidin_export
+                            result = process_reidin_export(df_raw)
+                        except Exception as e:
+                            st.error(f"I encountered an error during processing: {e}")
+                            result = None
+
+                    if result:
+                        for w in result.get("warnings", []):
+                            if w.startswith("ERROR"):
+                                st.error(w)
+                            else:
+                                st.warning(w)
+                        if result.get("output_path"):
+                            st.success(
+                                f"I ingested **{result['rows_out']:,} units** across "
+                                f"**{result['buildings']} buildings**. "
+                                f"Reidin DLD is now active at Priority 1.5."
+                            )
+                            if st.button("Reload App Data", key="reidin_reload_btn"):
+                                st.cache_data.clear()
+                                st.rerun()
+            except Exception as e:
+                st.error(f"I could not read that file: {e}")
+
+    st.divider()
+    if st.button("← Back", key="reidin_back_btn", use_container_width=True):
+        st.session_state.current_page = 'lead_search'
+        st.rerun()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # HEALTH CHECK PAGE
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -5454,9 +6240,43 @@ def render_health_check_page():
                 st.warning(" (Could not read file)")
         else:
             st.error("✕ Reference Data Missing")
-    
+
     st.divider()
-    
+
+    # Check 1b: Reidin DLD Data
+    st.subheader("Reidin DLD Data")
+    col_r1, col_r2 = st.columns(2)
+    with col_r1:
+        reidin_pq = Path("data/reidin_master.parquet")
+        reidin_csv = Path("data/reidin_master.csv")
+        reidin_file = reidin_pq if reidin_pq.exists() else (reidin_csv if reidin_csv.exists() else None)
+        if reidin_file:
+            size_mb = reidin_file.stat().st_size / 1024 / 1024
+            st.success("✓ Reidin DLD Master")
+            st.caption(f"{size_mb:.1f} MB — {reidin_file.name}")
+            try:
+                rdf = pd.read_parquet(reidin_file) if str(reidin_file).endswith('.parquet') else pd.read_csv(reidin_file)
+                st.caption(f"{len(rdf):,} transactions")
+                if 'building_name' in rdf.columns:
+                    st.caption(f"{rdf['building_name'].nunique()} buildings covered")
+                if 'contract_date' in rdf.columns:
+                    last = pd.to_datetime(rdf['contract_date'], errors='coerce').max()
+                    if pd.notna(last):
+                        st.caption(f"Latest transaction: {last.strftime('%b %Y')}")
+            except Exception:
+                pass
+        else:
+            st.warning("⚠ Reidin data not yet ingested")
+            st.caption("Go to Tools → Reidin Sync to scrape live from Reidin")
+    with col_r2:
+        pm_legacy = Path("scraped_data/unit_numbers_palm_jumeirah.csv")
+        if pm_legacy.exists():
+            st.info("ℹ PropertyMonitor legacy file present (archived — not used in cascade)")
+        else:
+            st.success("✓ PropertyMonitor legacy data cleared")
+
+    st.divider()
+
     # Check 2: API Configuration
     st.subheader(" API Configuration")
     api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -5589,6 +6409,8 @@ def main():
         render_pf_scraper_page()
     elif st.session_state.current_page == 'property_monitor':
         render_property_monitor_page()
+    elif st.session_state.current_page == 'reidin_sync':
+        render_reidin_sync_page()
     elif st.session_state.current_page == 'health_check':
         render_health_check_page()
     elif st.session_state.current_page == 'listing_matcher':
@@ -5597,9 +6419,304 @@ def main():
         render_bayut_listings_page()
     elif st.session_state.current_page == 'client_match':
         render_client_match_page()
+    elif st.session_state.current_page == 'watermark_remover':
+        render_watermark_remover_page()
     else:
         render_lead_search_page()
 
 
+def _extract_logo_mask(logo_rgb):
+    import cv2 as _cv2
+    import numpy as _np
+    logo_gray = _cv2.cvtColor(logo_rgb, _cv2.COLOR_RGB2GRAY)
+    _, logo_mask = _cv2.threshold(logo_gray, 30, 255, _cv2.THRESH_BINARY)
+    if logo_mask.mean() > 127:
+        logo_mask = _cv2.bitwise_not(logo_mask)
+    return logo_mask
+
+
+def _detect_watermark_mask(imgs_rgb):
+    import cv2 as _cv2
+    import numpy as _np
+
+    def _edge_density(gray):
+        edges = _cv2.Canny(gray, 40, 120)
+        k = _cv2.getStructuringElement(_cv2.MORPH_ELLIPSE, (5, 5))
+        return _cv2.dilate(edges, k, iterations=2)
+
+    h, w = imgs_rgb[0].shape[:2]
+
+    if len(imgs_rgb) >= 2:
+        grays = [_cv2.cvtColor(img, _cv2.COLOR_RGB2GRAY).astype(_np.float32)
+                 for img in imgs_rgb]
+        std_map = _np.stack(grays, axis=0).std(axis=0)
+        consistent = (std_map < 10).astype(_np.uint8) * 255
+        edges = _edge_density(_cv2.cvtColor(imgs_rgb[0], _cv2.COLOR_RGB2GRAY))
+        candidate = _cv2.bitwise_and(consistent, edges)
+    else:
+        img_f = imgs_rgb[0].astype(_np.float32)
+        bg = _cv2.GaussianBlur(img_f, (61, 61), 0)
+        img_lab = _cv2.cvtColor(imgs_rgb[0], _cv2.COLOR_RGB2LAB).astype(_np.float32)
+        bg_lab = _cv2.cvtColor(bg.clip(0, 255).astype(_np.uint8), _cv2.COLOR_RGB2LAB).astype(_np.float32)
+        deviation = _np.sqrt(_np.sum((img_lab - bg_lab) ** 2, axis=2))
+        anomaly = (deviation > 12).astype(_np.uint8) * 255
+        edges = _edge_density(_cv2.cvtColor(imgs_rgb[0], _cv2.COLOR_RGB2GRAY))
+        hsv = _cv2.cvtColor(imgs_rgb[0], _cv2.COLOR_RGB2HSV)
+        pink = (((hsv[:, :, 0] < 10) | (hsv[:, :, 0] > 170)) &
+                (hsv[:, :, 1] > 40) & (hsv[:, :, 2] > 80)).astype(_np.uint8) * 255
+        candidate = _cv2.bitwise_or(
+            _cv2.bitwise_and(anomaly, edges),
+            _cv2.bitwise_and(pink, edges)
+        )
+
+    n_labels, labels, stats, _ = _cv2.connectedComponentsWithStats(candidate)
+    clean = _np.zeros((h, w), dtype=_np.uint8)
+    glyph_heights = []
+    for i in range(1, n_labels):
+        area = int(stats[i, _cv2.CC_STAT_AREA])
+        bw   = int(stats[i, _cv2.CC_STAT_WIDTH])
+        bh   = int(stats[i, _cv2.CC_STAT_HEIGHT])
+        aspect = bw / max(bh, 1)
+        if 2 < area < 5000 and 0.01 < aspect < 30:
+            clean[labels == i] = 255
+            glyph_heights.append(bh)
+
+    if clean.any():
+        bk = _cv2.getStructuringElement(_cv2.MORPH_ELLIPSE, (35, 35))
+        grouped = _cv2.morphologyEx(clean, _cv2.MORPH_CLOSE, bk)
+        grouped = _cv2.morphologyEx(grouped, _cv2.MORPH_OPEN,
+                                    _cv2.getStructuringElement(_cv2.MORPH_ELLIPSE, (4, 4)))
+        final = _cv2.bitwise_and(clean, grouped)
+    else:
+        final = clean
+
+    if final.any():
+        flood = final.copy()
+        _cv2.floodFill(flood, None, (0, 0), 255)
+        final = _cv2.bitwise_or(final, _cv2.bitwise_not(flood))
+        fill_k = _cv2.getStructuringElement(_cv2.MORPH_ELLIPSE, (12, 12))
+        final = _cv2.morphologyEx(final, _cv2.MORPH_CLOSE, fill_k)
+        dk = _cv2.getStructuringElement(_cv2.MORPH_ELLIPSE, (4, 4))
+        final = _cv2.dilate(final, dk, iterations=1)
+
+    if glyph_heights:
+        inpaint_r = max(3, min(int(_np.median(glyph_heights)), 12))
+    else:
+        inpaint_r = 5
+
+    return final, inpaint_r
+
+
+def _inpaint_image(img_rgb, mask, inpaint_r=7):
+    """Try LaMa ML inpainting first; fall back to cv2 TELEA."""
+    import cv2 as _cv2
+    import numpy as _np
+    try:
+        from simple_lama_inpainting import SimpleLama
+        from PIL import Image as _Image
+        lama = SimpleLama()
+        pil_img  = _Image.fromarray(img_rgb)
+        pil_mask = _Image.fromarray(mask)
+        result = lama(pil_img, pil_mask)
+        return _np.array(result.convert("RGB")), "LaMa"
+    except Exception:
+        img_bgr    = _cv2.cvtColor(img_rgb, _cv2.COLOR_RGB2BGR)
+        result_bgr = _cv2.inpaint(img_bgr, mask, inpaintRadius=inpaint_r, flags=_cv2.INPAINT_TELEA)
+        return _cv2.cvtColor(result_bgr, _cv2.COLOR_BGR2RGB), "TELEA"
+
+
+def render_watermark_remover_page():
+    import cv2 as _cv2
+    import numpy as _np
+    import io as _io
+    import zipfile as _zipfile
+    import json as _json
+    from PIL import Image as _Image
+    from pathlib import Path as _Path
+
+    apply_global_styles()
+
+    back_col, title_col, _ = st.columns([1, 5, 1])
+    with back_col:
+        if st.button("Back", key="wm_back", use_container_width=True):
+            st.session_state.current_page = "lead_search"
+            st.rerun()
+    with title_col:
+        st.title("Photo Watermark Remover")
+        st.caption("Paint over the watermark on the first photo, then remove it from all photos at once.")
+    st.markdown("---")
+
+    tpl_dir = _Path(__file__).resolve().parent / "data" / "watermark_templates"
+    tpl_dir.mkdir(parents=True, exist_ok=True)
+    tpl_index_path = tpl_dir / "templates_index.json"
+    tpl_index = _json.loads(tpl_index_path.read_text()) if tpl_index_path.exists() else {}
+
+    tpl_options = ["Paint manually"] + sorted(tpl_index.keys())
+    chosen_tpl = st.selectbox("Saved templates", tpl_options, key="wm_tpl_select",
+                               help="Select a previously saved template to skip painting, or paint manually.")
+
+    uploaded = st.file_uploader(
+        "Upload photos (JPG / PNG / WEBP)",
+        type=["jpg", "jpeg", "png", "webp"],
+        accept_multiple_files=True,
+        key="wm_upload"
+    )
+    if not uploaded:
+        st.info("Upload one or more photos, then paint over the watermark on the first photo.")
+        return
+
+    imgs_rgb = []
+    for f in uploaded:
+        f.seek(0)
+        imgs_rgb.append(_np.array(_Image.open(f).convert("RGB")))
+
+    ih, iw = imgs_rgb[0].shape[:2]
+    mask = None
+
+    if chosen_tpl != "Paint manually" and chosen_tpl in tpl_index:
+        # ---- Saved template mode ----
+        tpl_path = tpl_dir / f"{chosen_tpl}.png"
+        tpl_arr = _np.array(_Image.open(str(tpl_path)).convert("L"))
+        mask = _cv2.resize(tpl_arr, (iw, ih), interpolation=_cv2.INTER_NEAREST)
+        _, mask = _cv2.threshold(mask, 127, 255, _cv2.THRESH_BINARY)
+        px_found = int(mask.sum() // 255)
+        st.success(f"Template '{chosen_tpl}' loaded — {px_found} pixels")
+    else:
+        # ---- Manual paint mode ----
+        import base64 as _b64enc
+        _canvas_dir = _Path(__file__).resolve().parent / "data" / "wm_canvas_component"
+        _wm_paint = st.components.v1.declare_component("wm_paint_canvas", path=str(_canvas_dir))
+
+        _buf2 = _io.BytesIO()
+        _Image.fromarray(imgs_rgb[0]).convert("RGB").save(_buf2, format="JPEG", quality=65)
+        img_b64 = "data:image/jpeg;base64," + _b64enc.b64encode(_buf2.getvalue()).decode()
+
+        canvas_h_px = max(300, int(1200 * ih / iw)) + 60
+        mask_b64 = _wm_paint(image_b64=img_b64, key="wm_paint", default=None, height=canvas_h_px)
+
+        if not mask_b64:
+            st.info("Paint over the watermark above using the red brush, then click \"Apply Mask\".")
+            return
+
+        _mask_bytes = _b64enc.b64decode(mask_b64.split(",")[1])
+        mask_pil = _Image.open(_io.BytesIO(_mask_bytes)).convert("L")
+        canvas_mask = _np.array(mask_pil)
+        mask = _cv2.resize(canvas_mask, (iw, ih), interpolation=_cv2.INTER_NEAREST)
+        _, mask = _cv2.threshold(mask, 127, 255, _cv2.THRESH_BINARY)
+
+    # ---- Preview overlay ----
+    overlay = imgs_rgb[0].copy()
+    overlay[mask == 255] = [255, 60, 60]
+    blend = _np.clip(
+        imgs_rgb[0].astype(_np.float32) * 0.5 + overlay.astype(_np.float32) * 0.5,
+        0, 255).astype(_np.uint8)
+    st.image(blend, caption="Region to be removed (red) — first photo", use_container_width=True)
+
+    if st.button("Remove from All Photos", type="primary", key="wm_run"):
+        results = []
+        prog = st.progress(0)
+        for idx, (f, img_rgb) in enumerate(zip(uploaded, imgs_rgb)):
+            fih, fiw = img_rgb.shape[:2]
+            m = _cv2.resize(mask, (fiw, fih), interpolation=_cv2.INTER_NEAREST)
+            _, m = _cv2.threshold(m, 127, 255, _cv2.THRESH_BINARY)
+            result_rgb, method_used = _inpaint_image(img_rgb, m)
+            buf = _io.BytesIO()
+            _Image.fromarray(result_rgb).save(buf, format="JPEG", quality=95)
+            results.append({"name": f.name, "bytes": buf.getvalue(), "original": img_rgb, "method": method_used})
+            prog.progress((idx + 1) / len(uploaded))
+        prog.empty()
+        methods = list({r["method"] for r in results})
+        st.session_state["wm_results"] = results
+        st.session_state["wm_painted_mask"] = mask
+        st.session_state["wm_method"] = ", ".join(methods)
+        st.rerun()
+
+    if st.session_state.get("wm_results"):
+        results = st.session_state["wm_results"]
+        saved_mask = st.session_state.get("wm_painted_mask")
+
+        st.markdown("---")
+        method_label = st.session_state.get("wm_method", "TELEA")
+        st.markdown(f"### Results — {len(results)} photo(s) cleaned  ·  inpainting: {method_label}")
+
+        zip_buf = _io.BytesIO()
+        with _zipfile.ZipFile(zip_buf, "w", _zipfile.ZIP_DEFLATED) as zf:
+            for r in results:
+                zf.writestr("clean_" + r["name"], r["bytes"])
+        st.download_button(
+            f"Download All as ZIP ({len(results)} photos)",
+            data=zip_buf.getvalue(),
+            file_name="clean_photos.zip",
+            mime="application/zip",
+            key="wm_zip",
+            type="primary"
+        )
+
+        st.markdown("---")
+        st.markdown("**Save painted mask as template** (reuse for future photos from the same agency):")
+        tpl_name_col, tpl_save_col = st.columns([4, 1])
+        with tpl_name_col:
+            tpl_name = st.text_input("Template name", key="wm_tpl_name",
+                                     label_visibility="collapsed",
+                                     placeholder="e.g. Luxury Residences")
+        with tpl_save_col:
+            if st.button("Save", key="wm_tpl_save", use_container_width=True):
+                if tpl_name.strip() and saved_mask is not None:
+                    safe = tpl_name.strip().replace("/", "-")
+                    _Image.fromarray(saved_mask).save(str(tpl_dir / (safe + ".png")))
+                    sh, sw = saved_mask.shape[:2]
+                    tpl_index[safe] = {
+                        "px_count": int(saved_mask.sum() // 255),
+                        "img_w": sw,
+                        "img_h": sh,
+                        "created": __import__("datetime").datetime.now().isoformat()[:19]
+                    }
+                    tpl_index_path.write_text(_json.dumps(tpl_index, indent=2))
+                    st.success("Saved: " + safe)
+                    st.rerun()
+                else:
+                    st.warning("Enter a name first.")
+
+        st.markdown("---")
+        for r in results:
+            col1, col2 = st.columns(2)
+            col1.image(r["original"], caption="Before: " + r["name"], use_container_width=True)
+            col2.image(r["bytes"], caption="After: " + r["name"], use_container_width=True)
+            col2.download_button(
+                "Download " + r["name"],
+                data=r["bytes"],
+                file_name="clean_" + r["name"],
+                mime="image/jpeg",
+                key="wm_dl_" + r["name"]
+            )
+            st.markdown("---")
+
+        if st.button("Clear Results", key="wm_clear"):
+            for k in ["wm_results", "wm_painted_mask", "wm_inpaint_r", "wm_method"]:
+                st.session_state.pop(k, None)
+            st.rerun()
+
+
+
 if __name__ == "__main__":
-    main()
+    _creds_path = Path(__file__).resolve().parent / "credentials.yaml"
+    with open(_creds_path) as _f:
+        _config = yaml.load(_f, Loader=SafeLoader)
+
+    _auth = stauth.Authenticate(
+        _config["credentials"],
+        _config["cookie"]["name"],
+        _config["cookie"]["key"],
+        _config["cookie"]["expiry_days"],
+        auto_hash=True,
+    )
+
+    _auth.login(location="main")
+
+    if st.session_state.get("authentication_status"):
+        _auth.logout(button_name="Sign out", location="sidebar")
+        main()
+    elif st.session_state.get("authentication_status") is False:
+        st.error("I don't recognise those credentials. Please try again.")
+    else:
+        st.info("Enter my credentials to access ORVA.")

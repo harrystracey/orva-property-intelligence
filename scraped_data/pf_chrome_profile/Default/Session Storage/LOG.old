@@ -1,0 +1,24 @@
+2026/03/06-17:08:23.835 5c7c Reusing MANIFEST C:\Users\thema\OneDrive\Desktop\full_scraping_bot\scraped_data\pf_chrome_profile\Default\Session Storage/MANIFEST-000001
+2026/03/06-17:08:23.839 5c7c Recovering log #357
+2026/03/06-17:08:23.845 5c7c Reusing old log C:\Users\thema\OneDrive\Desktop\full_scraping_bot\scraped_data\pf_chrome_profile\Default\Session Storage/000357.log 
+2026/03/06-17:11:30.305 5c7c Level-0 table #361: started
+2026/03/06-17:11:30.310 5c7c Level-0 table #361: 21026 bytes OK
+2026/03/06-17:11:30.312 5c7c Delete type=0 #357
+2026/03/06-17:11:30.312 5c7c Compacting 4@0 + 1@1 files
+2026/03/06-17:11:30.321 5c7c Generated table #362@0: 2263 keys, 77341 bytes
+2026/03/06-17:11:30.321 5c7c Compacted 4@0 + 1@1 files => 77341 bytes
+2026/03/06-17:11:30.322 5c7c compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/03/06-17:11:30.323 5c7c Delete type=2 #352
+2026/03/06-17:11:30.323 5c7c Delete type=2 #354
+2026/03/06-17:11:30.323 5c7c Delete type=2 #356
+2026/03/06-17:11:30.323 5c7c Delete type=2 #358
+2026/03/06-17:11:30.323 5c7c Delete type=2 #361
+2026/03/06-17:14:29.816 6a7c Level-0 table #364: started
+2026/03/06-17:14:29.827 6a7c Level-0 table #364: 20088 bytes OK
+2026/03/06-17:14:29.831 6a7c Delete type=0 #360
+2026/03/06-17:16:29.129 6a7c Level-0 table #366: started
+2026/03/06-17:16:29.135 6a7c Level-0 table #366: 19719 bytes OK
+2026/03/06-17:16:29.137 6a7c Delete type=0 #363
+2026/03/06-17:18:25.109 6a7c Level-0 table #368: started
+2026/03/06-17:18:25.135 6a7c Level-0 table #368: 21740 bytes OK
+2026/03/06-17:18:25.137 6a7c Delete type=0 #365
