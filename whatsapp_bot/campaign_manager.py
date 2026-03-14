@@ -29,6 +29,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 LEADS_PATH = _PROJECT_ROOT / 'data' / 'leads_master_v3.csv'
 RENTALS_PATH = _PROJECT_ROOT / 'scraped_data' / 'palm_jumeirah_rentals.csv'
 PF_LEADS_PATH = _PROJECT_ROOT / 'scraped_data' / 'propertyfinder_scraped_leads.csv'
+PROPSPACE_LEADS_PATH = _PROJECT_ROOT / 'scraped_data' / 'propspace_leads.csv'
 
 # Area filter: map area name -> list of building name substrings (lowercase). Lead/rental is kept if building contains any.
 AREA_BUILDING_KEYWORDS = {
@@ -622,6 +623,8 @@ def generate_messages_for_queue(queue: List[Dict]) -> List[Dict]:
             kwargs['buildings'] = item.get('buildings')
         if item.get('campaign_type') == 'active_seller':
             kwargs['listing_price'] = item.get('listing_price', '')
+        if item.get('campaign_type') in ('propspace_tenant', 'propspace_buyer'):
+            kwargs['budget_max'] = item.get('budget_max')
         msg_data = generate_message(**kwargs)
         
         if not msg_data:
@@ -631,9 +634,151 @@ def generate_messages_for_queue(queue: List[Dict]) -> List[Dict]:
         
         item['message'] = msg_data['message']
         item['template_type'] = msg_data['template_type']
+        # Generate a follow-up message for propspace leads (used when existing chat detected)
+        if item.get('campaign_type') in ('propspace_tenant', 'propspace_buyer'):
+            followup_type = item['campaign_type'] + '_followup'
+            followup_kwargs = dict(kwargs)
+            followup_kwargs['campaign_type'] = followup_type
+            followup_data = generate_message(**followup_kwargs)
+            if followup_data:
+                item['followup_message'] = followup_data['message']
+                item['followup_template_type'] = followup_data['template_type']
         messaged_queue.append(item)
     
     if skipped_corporate > 0:
         print(f"[SKIP] Removed {skipped_corporate} corporate entities")
     
     return messaged_queue
+
+
+def build_propspace_leads_queue(
+    location: Optional[str] = None,
+    lead_type: Optional[str] = None,
+    beds: Optional[int] = None,
+    sub_status_filter: str = 'all',
+    limit: Optional[int] = None,
+) -> List[Dict]:
+    """
+    Build a campaign queue from scraped PropSpace buyer/tenant enquiry leads.
+    These are WARM leads — people who already enquired on Palm Jumeirah properties.
+    The message pitch is: "I can help you find what you are looking for."
+
+    location: filter by sub_location contains (e.g. "Palm Views")
+    lead_type: "Tenant", "Buyer", or None (both)
+    beds: filter by beds_min == beds (only if detail-scraped; None = all)
+    sub_status_filter: "new" = Not yet contacted only, "all" = all open leads
+    limit: cap queue size
+    """
+    if not PROPSPACE_LEADS_PATH.exists():
+        print(f"[ERROR] {PROPSPACE_LEADS_PATH} not found. Run PropSpace scraper first.")
+        return []
+
+    try:
+        df = pd.read_csv(PROPSPACE_LEADS_PATH, encoding="utf-8", dtype=str)
+    except Exception as e:
+        print(f"[ERROR] Could not load PropSpace leads: {e}")
+        return []
+
+    if df.empty:
+        print("[WARN] PropSpace leads file is empty.")
+        return []
+
+    print(f"[PROPSPACE] Loaded {len(df)} rows")
+
+    # Keep only Open leads
+    if "status" in df.columns:
+        df = df[df["status"].str.strip().str.lower() == "open"]
+        print(f"[PROPSPACE] {len(df)} open leads")
+
+    # sub_status filter
+    if sub_status_filter == "new" and "sub_status" in df.columns:
+        df = df[df["sub_status"].str.strip().str.lower() == "not yet contacted"]
+        print(f"[PROPSPACE] {len(df)} not-yet-contacted leads")
+
+    # lead_type filter
+    if lead_type and lead_type.lower() in ("tenant", "buyer") and "lead_type" in df.columns:
+        df = df[df["lead_type"].str.strip().str.lower() == lead_type.lower()]
+        print(f"[PROPSPACE] {len(df)} {lead_type} leads")
+
+    # location filter (sub_location)
+    if location and "sub_location" in df.columns:
+        mask = df["sub_location"].fillna("").str.lower().str.contains(location.lower(), na=False)
+        df = df[mask]
+        print(f"[PROPSPACE] {len(df)} leads in location={location!r}")
+
+    # beds filter
+    if beds is not None and "beds_min" in df.columns:
+        beds_col = pd.to_numeric(df["beds_min"], errors="coerce")
+        df = df[beds_col == int(beds)]
+        print(f"[PROPSPACE] {len(df)} leads with beds_min={beds}")
+
+    if df.empty:
+        print("[WARN] No leads after filters.")
+        return []
+
+    # Sort by enquiry_date descending, dedup by phone (keep most recent)
+    if "enquiry_date" in df.columns:
+        df = df.sort_values("enquiry_date", ascending=False, na_position="last")
+    df = df.drop_duplicates(subset=["phone"], keep="first")
+    print(f"[PROPSPACE] {len(df)} unique phone numbers")
+
+    queue = []
+    for _, row in df.iterrows():
+        phone = str(row.get("phone", "")).strip()
+        if not phone or phone == "nan":
+            continue
+
+        first = str(row.get("first_name", "")).strip()
+        last = str(row.get("last_name", "")).strip()
+        full_name = " ".join(p for p in [first, last] if p and p != "nan").strip()
+        if not full_name:
+            full_name = "Owner"
+        # Skip placeholder names inserted by CRM auto-import
+        _skip_names = {"new whatsapp lead", "unknown lead", "new lead", "na", "n/a"}
+        if full_name.lower().strip() in _skip_names:
+            continue
+
+        building = str(row.get("sub_location", "")).strip()
+        if not building or building == "nan":
+            building = str(row.get("location", "Palm Jumeirah")).strip()
+        # Clean up placeholder and ugly suffixes
+        if building in ("-", "-- -", "- -", "nan"):
+            building = "Palm Jumeirah"
+        # Remove " (all)" suffix (e.g. "Shoreline Apartments (all)" -> "Shoreline Apartments")
+        building = building.replace(" (all)", "").strip()
+
+        beds_min = row.get("beds_min", "")
+        try:
+            bedrooms = str(int(float(beds_min))) if beds_min and str(beds_min).strip() not in ("", "nan") else None
+        except (ValueError, TypeError):
+            bedrooms = None
+
+        lt = str(row.get("lead_type", "Tenant")).strip()
+        # Map to template type: propspace_tenant or propspace_buyer
+        campaign_subtype = "propspace_buyer" if lt.lower() == "buyer" else "propspace_tenant"
+
+        budget_max = row.get("budget_max", "")
+        try:
+            budget_max = int(float(budget_max)) if budget_max and str(budget_max).strip() not in ("", "nan") else None
+        except (ValueError, TypeError):
+            budget_max = None
+
+        queue.append({
+            "phone": phone,
+            "owner_name": full_name,
+            "building": building,
+            "unit": "",
+            "bedrooms": bedrooms,
+            "budget_max": budget_max,
+            "lead_type": lt,
+            "source": str(row.get("source", "")).strip(),
+            "is_portfolio": False,
+            "campaign_type": campaign_subtype,  # propspace_tenant or propspace_buyer
+        })
+
+    if limit:
+        queue = queue[:limit]
+
+    print(f"[PROPSPACE] Queue: {len(queue)} leads ready")
+    return queue
+

@@ -212,7 +212,7 @@ def get_reply_stats(days: Optional[int] = None) -> Dict:
     return {'replied': len(seen)}
 
 
-def get_sent_entries_for_reply_check(days: int = 90, limit: int = 100) -> List[Dict]:
+def get_sent_entries_for_reply_check(days: int = 90, limit: int = 5000) -> List[Dict]:
     """
     Get list of sent messages (phone, timestamp) for reply-checking.
     Returns most recent first, up to limit, only status=='sent'.
@@ -232,7 +232,14 @@ def get_sent_entries_for_reply_check(days: int = 90, limit: int = 100) -> List[D
                     continue
             except Exception:
                 continue
-            entries.append({'phone': row['phone'], 'timestamp': row['timestamp']})
+            entries.append({
+                'phone': row['phone'],
+                'timestamp': row['timestamp'],
+                'owner_name': row.get('owner_name', ''),
+                'template_type': row.get('template_type', ''),
+                'building': row.get('building', ''),
+                'unit': row.get('unit', ''),
+            })
     # Dedupe by phone (keep most recent per phone)
     by_phone = {}
     for e in entries:

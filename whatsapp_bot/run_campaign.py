@@ -28,6 +28,7 @@ from campaign_manager import (
     build_portfolio_owner_queue,
     build_active_seller_queue,
     build_active_renter_queue,
+    build_propspace_leads_queue,
     apply_dedup_to_queue,
     shuffle_queue,
     generate_messages_for_queue
@@ -47,7 +48,12 @@ async def run_campaign(
     limit: Optional[int] = None,
     dry_run: bool = False,
     override_limit: bool = False,
-    custom_message: Optional[str] = None
+    custom_message: Optional[str] = None,
+    lead_type: Optional[str] = None,
+    beds: Optional[int] = None,
+    not_yet_contacted: bool = False,
+    exclude_file=None,
+    no_limits: bool = False,
 ):
     """Execute a WhatsApp campaign."""
     campaign_id = f"{campaign_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -104,6 +110,14 @@ async def run_campaign(
             limit=limit,
             area_filter=area
         )
+    elif campaign_type == 'propspace_leads':
+        queue = build_propspace_leads_queue(
+            location=building or None,
+            lead_type=lead_type,
+            beds=beds,
+            sub_status_filter='new' if not_yet_contacted else 'all',
+            limit=limit,
+        )
     else:
         print(f"[ERROR] Unknown campaign type: {campaign_type}")
         return
@@ -119,12 +133,29 @@ async def run_campaign(
         print("[ERROR] Queue is empty after dedup (all phones messaged recently)")
         return
     
+    # Apply manual exclusions from app queue preview
+    if exclude_file:
+        import json as _json
+        _excl_path = Path(exclude_file) if Path(exclude_file).is_absolute() else Path(__file__).parent / exclude_file
+        if _excl_path.exists():
+            _excl_phones = set(_json.loads(_excl_path.read_text(encoding="utf-8")))
+            _before = len(queue)
+            queue = [item for item in queue if item["phone"] not in _excl_phones]
+            print(f"[EXCLUDE] Removed {_before - len(queue)} manually excluded contacts ({len(queue)} remaining)")
+    
     # Generate messages (or use single custom message for all)
     if custom_message and custom_message.strip():
         print("\n[MESSAGES] Using single custom message for all contacts")
         msg = custom_message.strip()
         for item in queue:
-            item['message'] = msg
+            from message_templates import format_first_name as _ffn
+            _first = _ffn(item.get('owner_name', '')) or 'there'
+            item['message'] = (msg
+                .replace('{name}', _first)
+                .replace('{unit}', str(item.get('unit', '') or ''))
+                .replace('{building}', str(item.get('building', '') or ''))
+                .replace('{phone}', str(item.get('phone', '') or ''))
+            )
             item['template_type'] = 'custom'
     else:
         print("\n[MESSAGES] Generating personalized messages...")
@@ -183,7 +214,7 @@ async def run_campaign(
     )
     print(f"[CAP] Today's sent: {today_count} / {daily_cap}")
     can_send, reason = rate_limiter.can_send_today()
-    if not can_send:
+    if not can_send and not no_limits:
         print(f"[STOP] {reason}")
         return
     
@@ -220,16 +251,18 @@ async def run_campaign(
 
         for idx, item in enumerate(queue, 1):
             # Check if should stop
-            should_stop, stop_reason = rate_limiter.should_stop_session()
-            if should_stop:
-                print(f"\n[STOP] {stop_reason}")
-                break
+            if not no_limits:
+                should_stop, stop_reason = rate_limiter.should_stop_session()
+                if should_stop:
+                    print(f"\n[STOP] {stop_reason}")
+                    break
 
             # Check daily cap again
-            can_send, reason = rate_limiter.can_send_today()
-            if not can_send:
-                print(f"\n[STOP] {reason}")
-                break
+            if not no_limits:
+                can_send, reason = rate_limiter.can_send_today()
+                if not can_send:
+                    print(f"\n[STOP] {reason}")
+                    break
 
             # Format phone
             phone_formatted = format_phone_for_whatsapp(item['phone'])
@@ -272,31 +305,36 @@ async def run_campaign(
             rate_limiter.record_send_attempt(result['status'], item['template_type'])
 
             # Check if should stop due to failures
-            should_stop, stop_reason = rate_limiter.should_stop_session()
-            if should_stop:
-                print(f"\n[STOP] {stop_reason}")
-                break
+            if not no_limits:
+                should_stop, stop_reason = rate_limiter.should_stop_session()
+                if should_stop:
+                    print(f"\n[STOP] {stop_reason}")
+                    break
 
             # Only delay when a message was actually sent (skip delay for not_on_whatsapp, failed, etc.)
             if result['status'] == 'sent':
-                did_pause = await rate_limiter.check_mandatory_pause()
-                if did_pause:
-                    print("\n[RECONNECT] Reconnecting to Chrome after long pause...")
-                    try:
-                        playwright, browser, page = await reconnect_to_whatsapp(playwright, browser)
-                        rate_limiter.consecutive_failures = 0
-                        print("[OK] Reconnected.")
-                        ready = await verify_whatsapp_ready(page)
-                        if not ready:
-                            print("[WARN] WhatsApp tab may still be loading (white screen). Waiting 10s...")
-                            await asyncio.sleep(10)
-                        print()
-                    except Exception as e:
-                        print(f"[ERROR] Reconnect failed: {e}")
-                        print("[STOP] Cannot continue without WhatsApp connection.")
-                        break
-                if idx < len(queue):
-                    await rate_limiter.wait_between_messages()
+                if no_limits:
+                    if idx < len(queue):
+                        await asyncio.sleep(3)
+                else:
+                    did_pause = await rate_limiter.check_mandatory_pause()
+                    if did_pause:
+                        print("\n[RECONNECT] Reconnecting to Chrome after long pause...")
+                        try:
+                            playwright, browser, page = await reconnect_to_whatsapp(playwright, browser)
+                            rate_limiter.consecutive_failures = 0
+                            print("[OK] Reconnected.")
+                            ready = await verify_whatsapp_ready(page)
+                            if not ready:
+                                print("[WARN] WhatsApp tab may still be loading (white screen). Waiting 10s...")
+                                await asyncio.sleep(10)
+                            print()
+                        except Exception as e:
+                            print(f"[ERROR] Reconnect failed: {e}")
+                            print("[STOP] Cannot continue without WhatsApp connection.")
+                            break
+                    if idx < len(queue):
+                        await rate_limiter.wait_between_messages()
 
         # Summary
         print()
@@ -432,6 +470,16 @@ def main():
     parser.add_argument('--mark-restricted', action='store_true', help='Record today as restriction date; cooldown will apply when you run campaigns again')
     parser.add_argument('--test', type=str, metavar='PHONE', help='Test mode: send one message to specified phone (e.g. YOUR_PHONE_NUMBER)')
     parser.add_argument('--custom-message-file', type=str, metavar='PATH', help='Path to file containing a single message to send to all contacts (overrides templates)')
+    parser.add_argument('--lead-type', type=str, choices=['tenant', 'buyer', 'both'], default=None,
+                        help='PropSpace leads: filter by lead type')
+    parser.add_argument('--beds', type=int, default=None,
+                        help='PropSpace leads: filter by beds_min')
+    parser.add_argument('--not-yet-contacted', action='store_true', dest='not_yet_contacted',
+                        help='PropSpace leads: only not-yet-contacted sub_status')
+    parser.add_argument('--exclude-file', type=str, metavar='PATH', dest='exclude_file',
+                        help='JSON file with phone numbers to skip (written by app queue preview)')
+    parser.add_argument('--no-limits', action='store_true', dest='no_limits',
+                        help='Skip all delays, caps and pauses. Send continuously until done or Ctrl+C.')
     
     args = parser.parse_args()
     
@@ -468,7 +516,12 @@ def main():
         limit=args.limit,
         dry_run=args.dry_run,
         override_limit=args.override_limit,
-        custom_message=custom_message
+        custom_message=custom_message,
+        lead_type=getattr(args, "lead_type", None),
+        beds=getattr(args, "beds", None),
+        not_yet_contacted=getattr(args, "not_yet_contacted", False),
+        exclude_file=getattr(args, "exclude_file", None),
+        no_limits=getattr(args, "no_limits", False),
     ))
 
 

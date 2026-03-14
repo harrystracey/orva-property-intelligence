@@ -1,0 +1,16 @@
+{
+  "name": "baileys-wa-server",
+  "version": "1.0.0",
+  "description": "Baileys WhatsApp server for ORVA",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.9",
+    "@hapi/boom": "^10.0.1",
+    "express": "^4.18.2",
+    "qrcode": "^1.5.3",
+    "fluent-ffmpeg": "^2.1.3"
+  }
+}

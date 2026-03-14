@@ -1782,75 +1782,46 @@ def apply_comprehensive_enrichment(lead_df: pd.DataFrame,
         except Exception:
             pass
 
-    # ── Live PropertyMonitor lookup (HIGHEST authority — actual DLD transactions) ──────────
-    # Reads raw PM file directly so new scrapes are immediately effective without registry rebuild
-    # PM is prioritised above all other sources because it contains confirmed title deed data
-    pm_live_lookup = {}
-    _pm_path = Path("scraped_data/unit_numbers_palm_jumeirah.csv")
-    if _pm_path.exists():
+    # ── Live Reidin DLD lookup (HIGHEST external authority — official DLD transactions) ──────
+    # Reads reidin_master directly so new uploads are effective without registry rebuild.
+    # Graceful degradation: if reidin_master is missing, lookup stays {} and cascade
+    # silently falls through to Priority 2 (Unit Registry) with no error.
+    reidin_live_lookup = {}
+    _reidin_path = Path("data/reidin_master.parquet")
+    _reidin_csv_path = Path("data/reidin_master.csv")
+    _rpath = _reidin_path if _reidin_path.exists() else (_reidin_csv_path if _reidin_csv_path.exists() else None)
+    if _rpath:
         try:
-            pm_live_raw = pd.read_csv(_pm_path, encoding="utf-8", low_memory=False, on_bad_lines="skip")
-            # Columns mapped by index (headers contain full filter option lists)
-            _pm_bld_col  = pm_live_raw.columns[4]   # Community / Building (primary)
-            _pm_sub_col  = pm_live_raw.columns[5]   # Sub Community / Building (more specific when present)
-            _pm_beds_col = pm_live_raw.columns[6]   # Beds
-            _pm_size_col = pm_live_raw.columns[8]   # Unit Size (sq ft)
-            _pm_unit_col = pm_live_raw.columns[14]  # Unit No.
-            pm_live_valid = pm_live_raw[
-                pm_live_raw[_pm_bld_col].notna() &
-                pm_live_raw[_pm_unit_col].notna() &
-                pm_live_raw[_pm_beds_col].notna()
+            reidin_raw = pd.read_parquet(_rpath) if str(_rpath).endswith('.parquet') else pd.read_csv(_rpath, low_memory=False)
+            _shoreline_towers = [
+                "alramth", "alnabat", "almurjan", "almashraba", "alkhayali",
+                "almalak", "alhabool", "alghaf", "almasalli", "alhallawi",
+                "alanbara", "jashfalqa", "alshamsi", "jashhamad",
+                "albasri", "alsahab", "alanbar", "aldawaar", "almsalli",
+                "alsultana", "althamam", "aldas", "alkhushkar", "aljanahi",
+                "almajara", "alfahad", "alfattan", "alshirawi", "alhamri",
+                "alhatmi", "alseef", "shorelineapartments",
             ]
-            for _, r in pm_live_valid.iterrows():
-                unit_str = str(r[_pm_unit_col]).strip()
-                if not unit_str or unit_str in ("-", "Unit No.", "nan"):
+            for _, row in reidin_raw.iterrows():
+                bld = str(row.get('building_name', '')).strip().lower().replace(' ', '').replace('-', '')
+                unit = str(row.get('unit_number', '')).strip().upper().replace(' ', '').replace('-', '')
+                if not bld or not unit or unit in ("-", "NAN", ""):
                     continue
-                # Normalise bedrooms — "Studio" → 0, integers otherwise
-                br_raw = str(r[_pm_beds_col]).strip().lower()
-                if br_raw in ("studio", "st", "s"):
-                    br_val = "Studio"
-                else:
-                    br_m = re.search(r"(\d+)", br_raw)
-                    if not br_m:
-                        continue
-                    br_val = br_m.group(1)
-                # Use sub-community (col5) when available — it's more specific (e.g. Anantara North
-                # within The Crescent). Fall back to community (col4) for everything else.
-                sub_val = str(r[_pm_sub_col]).strip() if pd.notna(r[_pm_sub_col]) else ""
-                raw_pm_name = sub_val if sub_val and sub_val not in ("-", "") else str(r[_pm_bld_col]).strip()
-                std_pm_name = standardize_building_name(raw_pm_name) or raw_pm_name
-                pm_b = std_pm_name.strip().lower().replace(" ", "").replace("-", "")
-                pm_u = unit_str.upper().replace(" ", "").replace("-", "")
-                # Parse size (already in sqft for PM data)
-                pm_size = None
-                try:
-                    pm_size = float(str(r[_pm_size_col]).replace(",", "").strip())
-                except Exception:
-                    pass
-                data_val = {"bedrooms": br_val, "size_sqft": pm_size}
-                # PM uses "Shoreline Apartments" for all 20 towers — store under every tower name
-                # so leads stored under Al Ramth / Al Nabat / etc. can match by unit number
-                _shoreline_towers = [
-                    "alramth", "alnabat", "almurjan", "almashraba", "alkhayali",
-                    "almalak", "alhabool", "alghaf", "almasalli", "alhallawi",
-                    "alanbara", "jashfalqa", "alshamsi", "jashhamad",
-                    "albasri", "alsahab", "alanbar", "aldawaar", "almsalli",
-                    "alsultana", "althamam", "aldas", "alkhushkar", "aljanahi",
-                    "almajara", "alfahad", "alfattan", "alshirawi", "alhamri",
-                    "alhatmi", "alseef", "shorelineapartments",
-                ]
-                if "shoreline" in pm_b or pm_b == "shorelineapartments":
+                beds = row.get('bedrooms')
+                size = row.get('size_sqft')
+                data_val = {"bedrooms": beds, "size_sqft": size}
+                # Shoreline: stored under every tower alias so any tower name matches by unit
+                if "shoreline" in bld or bld == "shorelineapartments":
                     for tower_key in _shoreline_towers:
-                        k = f"{tower_key}|{pm_u}"
-                        if k not in pm_live_lookup:
-                            pm_live_lookup[k] = data_val
+                        k = f"{tower_key}|{unit}"
+                        if k not in reidin_live_lookup:
+                            reidin_live_lookup[k] = data_val
                 else:
-                    pm_key = f"{pm_b}|{pm_u}"
-                    # Store — PM data is the ground truth, don't overwrite with worse data
-                    if pm_key not in pm_live_lookup:
-                        pm_live_lookup[pm_key] = data_val
+                    key = f"{bld}|{unit}"
+                    if key not in reidin_live_lookup:
+                        reidin_live_lookup[key] = data_val
         except Exception:
-            pass
+            pass  # Reidin data unavailable — cascade silently continues at Priority 2
 
     # Live PF lookup: unit+building → bedrooms (lower confidence — PF scraper can misread bedrooms)
     pf_live_lookup = {}
@@ -1961,24 +1932,24 @@ def apply_comprehensive_enrichment(lead_df: pd.DataFrame,
             bed_resolved = True
             stats['beds_original'] += 1
 
-        # PRIORITY 1.5: Live PropertyMonitor lookup — highest external authority
-        # Reads raw DLD transaction file directly so any new PM scrape is used immediately.
-        # PM takes priority over registry (which may be stale) and over PF scraper (less reliable).
-        if not bed_resolved and pm_live_lookup and building and unit_number:
-            pm_b = str(building).strip().lower().replace(' ', '').replace('-', '')
-            pm_u = str(unit_number).strip().upper().replace(' ', '').replace('-', '')
-            pm_key = f"{pm_b}|{pm_u}"
-            pm_rec = pm_live_lookup.get(pm_key)
-            if pm_rec and pm_rec.get('bedrooms'):
-                lead_df.at[idx, 'bedrooms'] = pm_rec['bedrooms']
-                lead_df.at[idx, 'bedroom_method'] = 'PropertyMonitor (live)'
+        # PRIORITY 1.5: Live Reidin DLD lookup — official DLD transactions, highest external authority
+        # Reads reidin_master directly so any new upload is immediately effective.
+        # Silently skipped if reidin_master is not yet uploaded (reidin_live_lookup will be {}).
+        if not bed_resolved and reidin_live_lookup and building and unit_number:
+            r_b = str(building).strip().lower().replace(' ', '').replace('-', '')
+            r_u = str(unit_number).strip().upper().replace(' ', '').replace('-', '')
+            r_key = f"{r_b}|{r_u}"
+            r_rec = reidin_live_lookup.get(r_key)
+            if r_rec and r_rec.get('bedrooms'):
+                lead_df.at[idx, 'bedrooms'] = r_rec['bedrooms']
+                lead_df.at[idx, 'bedroom_method'] = 'Reidin DLD (live)'
                 lead_df.at[idx, 'bedroom_confidence'] = 'High'
                 bed_resolved = True
                 stats['beds_from_registry'] += 1
-                if not size_resolved and pm_rec.get('size_sqft'):
-                    lead_df.at[idx, 'size_sqft'] = pm_rec['size_sqft']
-                    lead_df.at[idx, 'size_sqm'] = round(pm_rec['size_sqft'] * SQFT_TO_SQM, 0)
-                    lead_df.at[idx, 'size_method'] = 'PropertyMonitor (live)'
+                if not size_resolved and r_rec.get('size_sqft'):
+                    lead_df.at[idx, 'size_sqft'] = r_rec['size_sqft']
+                    lead_df.at[idx, 'size_sqm'] = round(r_rec['size_sqft'] * SQFT_TO_SQM, 0)
+                    lead_df.at[idx, 'size_method'] = 'Reidin DLD (live)'
                     lead_df.at[idx, 'size_confidence'] = 'High'
                     size_resolved = True
                     stats['size_estimated'] += 1

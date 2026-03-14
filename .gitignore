@@ -6,6 +6,7 @@
 chat_history/
 
 # Python
+venv/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -49,6 +50,9 @@ data/bayut_listings_progress.json
 logs/
 *.log
 
+# Auth
+credentials.yaml
+
 # Temp
 *.tmp
 bayut_scraper/chrome_debug_profile/
@@ -58,3 +62,10 @@ whatsapp_bot/whatsapp_chrome_profile/
 bayut_scraper/chrome_debug_profile/
 propertyfinder_scraper/chrome_debug_profile/
 scraper/chrome_debug_profile/
+
+# Baileys session (auth tokens — never commit)
+whatsapp_bot/baileys_server/auth/
+whatsapp_bot/baileys_server/node_modules/
+
+# Playwright Chrome profiles (session data — never commit)
+whatsapp_bot/playwright_server/chrome_profile/
