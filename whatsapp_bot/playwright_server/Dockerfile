@@ -8,4 +8,5 @@ RUN pip install --no-cache-dir fastapi uvicorn python-dotenv playwright==1.58.0
 COPY whatsapp_bot/playwright_server/server.py .
 
 EXPOSE 3001
-CMD ["python", "server.py"]
+# Start Xvfb virtual display at :99 before launching the server
+CMD ["sh", "-c", "Xvfb :99 -screen 0 1280x720x24 -nolisten tcp & sleep 1 && python server.py"]
