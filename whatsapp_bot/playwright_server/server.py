@@ -283,7 +283,7 @@ async def _start_playwright() -> None:
     pw = await async_playwright().start()
     _browser_context = await pw.chromium.launch_persistent_context(
         user_data_dir=str(CHROME_PROFILE_DIR),
-        headless=False,
+        headless=True,
         args=[
             "--no-sandbox",
             "--disable-dev-shm-usage",
