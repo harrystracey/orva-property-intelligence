@@ -524,20 +524,18 @@ def load_registry_financial():
     if not p.exists():
         return {}
     df = pd.read_csv(p, encoding="utf-8", low_memory=False)
-    lookup = {}
-    for _, r in df.iterrows():
-        bkey = str(r["building_name"]).strip().lower().replace(" ", "").replace("-", "")
-        ukey = str(r["unit_number"]).strip().upper().replace(" ", "").replace("-", "")
-        key = f"{bkey}|{ukey}"
-        lookup[key] = {
-            "view":            str(r["view"]) if pd.notna(r.get("view")) else None,
-            "confidence":      str(r.get("confidence", "MEDIUM")),
-            "last_sale_price": float(r["last_sale_price"]) if pd.notna(r.get("last_sale_price")) else None,
-            "last_sale_date":  str(r["last_sale_date"]) if pd.notna(r.get("last_sale_date")) else None,
-            "last_annual_rent":float(r["last_annual_rent"]) if pd.notna(r.get("last_annual_rent")) else None,
-            "rental_count":    int(r["rental_count"]) if pd.notna(r.get("rental_count")) else 0,
-            "sale_count":      int(r["sale_count"]) if pd.notna(r.get("sale_count")) else 0,
-        }
+    df["_bkey"] = df["building_name"].astype(str).str.strip().str.lower().str.replace(" ", "", regex=False).str.replace("-", "", regex=False)
+    df["_ukey"] = df["unit_number"].astype(str).str.strip().str.upper().str.replace(" ", "", regex=False).str.replace("-", "", regex=False)
+    df["_key"] = df["_bkey"] + "|" + df["_ukey"]
+    cols = {"view": None, "confidence": "MEDIUM", "last_sale_price": None, "last_sale_date": None, "last_annual_rent": None, "rental_count": 0, "sale_count": 0}
+    for col, default in cols.items():
+        if col not in df.columns:
+            df[col] = default
+    lookup = (
+        df.set_index("_key")[list(cols.keys())]
+        .where(df.set_index("_key")[list(cols.keys())].notna(), other=None)
+        .to_dict("index")
+    )
     return lookup
 
 
