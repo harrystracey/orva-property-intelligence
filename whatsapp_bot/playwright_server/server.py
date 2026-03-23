@@ -764,7 +764,7 @@ async def _playwright_get_link_code(phone_number: str) -> str:
                         if (/^[A-Z0-9]{4}-[A-Z0-9]{4}$/i.test(t)) return t.toUpperCase();
                         if (/^[A-Z0-9]{8}$/i.test(t)) return t.slice(0,4).toUpperCase() + '-' + t.slice(4).toUpperCase();
                     }
-                    const collapsed = (document.body.innerText || '').replace(/\n/g, '');
+                    const collapsed = (document.body.innerText || '').replace(/\\n/g, '');
                     const m = collapsed.match(/([A-Z0-9]{4})-([A-Z0-9]{4})/i);
                     if (m) return m[1].toUpperCase() + '-' + m[2].toUpperCase();
                     return null;
