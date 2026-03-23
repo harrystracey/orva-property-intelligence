@@ -5,6 +5,7 @@ Playwright/CDP functions retained for chat scanning (local Windows use only).
 """
 
 import asyncio
+import os
 import re
 import random
 import requests
@@ -13,8 +14,8 @@ from typing import Optional, Dict
 
 
 BAILEYS_ACCOUNTS = {
-    "1": "http://127.0.0.1:3001",
-    "2": "http://127.0.0.1:3002",
+    "1": f"http://{os.environ.get('WA_HOST_1', '127.0.0.1')}:3001",
+    "2": f"http://{os.environ.get('WA_HOST_2', '127.0.0.1')}:3002",
 }
 BAILEYS_URL = BAILEYS_ACCOUNTS["1"]  # default
 
