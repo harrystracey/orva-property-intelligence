@@ -670,8 +670,10 @@ async def _playwright_get_link_code(phone_number: str) -> str:
             inp = await _page.query_selector(sel)
             if inp and await inp.is_visible():
                 await inp.click()
-                await _page.keyboard.press("Control+A")
-                await _page.keyboard.press("Delete")
+                await _page.keyboard.press("End")
+                # Select only the editable digits (not the country prefix) and replace
+                for _ in range(20):
+                    await _page.keyboard.press("Backspace")
                 await _page.keyboard.type(fill_number, delay=80)
                 filled = True
                 log.info(f"[LINK] Entered number via keyboard {sel}: {fill_number}")
