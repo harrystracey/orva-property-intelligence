@@ -743,31 +743,43 @@ async def _playwright_get_link_code(phone_number: str) -> str:
 
             code = await _page.evaluate("""
                 () => {
-                    // Try known testids
+                    // Try exact testids first
                     for (const sel of [
                         '[data-testid="link-with-phone-number-code"]',
                         '[data-testid="phonecode-login-code"]',
                         '[data-testid="pairing-code"]',
-                        '[data-testid*="code"]',
                     ]) {
                         const el = document.querySelector(sel);
                         if (el) {
                             const t = el.innerText.trim().replace(/\\s+/g, '');
-                            if (t.length >= 8) return t.slice(0,4) + '-' + t.slice(t.length-4);
+                            if (/^[A-Z0-9]{8}$/i.test(t)) return t.slice(0,4).toUpperCase() + '-' + t.slice(4).toUpperCase();
+                            const m = t.match(/([A-Z0-9]{4})-([A-Z0-9]{4})/i);
+                            if (m) return m[1].toUpperCase() + '-' + m[2].toUpperCase();
                         }
                     }
-                    // Text walker: exact match
+                    // WA renders each code char in its own span — find runs of single-char nodes
+                    const buf = [];
                     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
                     let node;
+                    const check = () => {
+                        if (buf.length >= 9) {
+                            const seq = buf.join('');
+                            const m = seq.match(/([A-Z0-9]{4})-([A-Z0-9]{4})/);
+                            if (m) return m[1] + '-' + m[2];
+                        }
+                        return null;
+                    };
                     while ((node = walker.nextNode())) {
-                        const t = (node.textContent || '').trim();
-                        if (/^[A-Z0-9]{4}-[A-Z0-9]{4}$/i.test(t)) return t.toUpperCase();
-                        if (/^[A-Z0-9]{8}$/i.test(t)) return t.slice(0,4).toUpperCase() + '-' + t.slice(4).toUpperCase();
+                        const ch = node.textContent.trim();
+                        if (ch.length === 1 && /[A-Z0-9\\-]/i.test(ch)) {
+                            buf.push(ch.toUpperCase());
+                        } else {
+                            const r = check();
+                            if (r) return r;
+                            buf.length = 0;
+                        }
                     }
-                    const collapsed = (document.body.innerText || '').replace(/\\n/g, '');
-                    const m = collapsed.match(/([A-Z0-9]{4})-([A-Z0-9]{4})/i);
-                    if (m) return m[1].toUpperCase() + '-' + m[2].toUpperCase();
-                    return null;
+                    return check();
                 }
             """)
             if code:
