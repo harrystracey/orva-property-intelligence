@@ -603,23 +603,42 @@ async def _playwright_get_link_code(phone_number: str) -> str:
 
             if dropdown_opened and dropdown_opened != 'native-select':
                 log.info(f"[LINK] Country dropdown opened via: {dropdown_opened}")
-                await asyncio.sleep(1.2)  # wait for search overlay to appear
+                await asyncio.sleep(1.5)  # wait for search overlay to appear
 
-                # Find the search input that appeared inside the dropdown overlay
+                # Save screenshot of dropdown state for debugging
+                try:
+                    _dbg_buf = await _page.screenshot()
+                    with open('/tmp/wa_dropdown.png', 'wb') as _f:
+                        _f.write(_dbg_buf)
+                    log.info("[LINK] Dropdown screenshot → /tmp/wa_dropdown.png")
+                except Exception:
+                    pass
+
+                # Log ALL visible inputs sorted by y position
+                input_info = await _page.evaluate("""
+                    () => Array.from(document.querySelectorAll('input'))
+                        .filter(i => i.offsetParent !== null && i.offsetWidth > 20)
+                        .sort((a,b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)
+                        .map(i => `${i.type}|${i.placeholder||''}|${i.offsetWidth}x${i.offsetHeight}|y=${Math.round(i.getBoundingClientRect().top)}`)
+                """)
+                log.info(f"[LINK] Inputs after dropdown: {input_info}")
+
+                # Focus the topmost visible input (overlay search box should be above phone input)
                 search_focused = await _page.evaluate("""
                     () => {
-                        // Prefer a search-type input; fall back to any newly visible input
-                        for (const sel of ['input[type="search"]', 'input[placeholder]', 'input[type="text"]', 'input']) {
-                            const inp = document.querySelector(sel);
-                            if (inp && inp.offsetParent !== null && inp.offsetWidth > 40) {
-                                inp.focus();
-                                return sel;
-                            }
+                        const inputs = Array.from(document.querySelectorAll('input'))
+                            .filter(i => i.offsetParent !== null && i.offsetWidth > 40)
+                            .sort((a,b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+                        if (inputs.length > 0) {
+                            inputs[0].focus();
+                            inputs[0].click();
+                            const r = inputs[0].getBoundingClientRect();
+                            return `y=${Math.round(r.top)} w=${inputs[0].offsetWidth} type=${inputs[0].type}`;
                         }
                         return null;
                     }
                 """)
-                log.info(f"[LINK] Search input focused: {search_focused}")
+                log.info(f"[LINK] Topmost input focused: {search_focused}")
 
                 # Type country name into search field
                 await _page.keyboard.type(country_name, delay=60)
