@@ -554,11 +554,12 @@ def build_active_renter_queue(
     return queue
 
 
-def apply_dedup_to_queue(queue: List[Dict], days_window: int = 30) -> List[Dict]:
+def apply_dedup_to_queue(queue: List[Dict], days_window: int = 30, wa_account: str = '1') -> List[Dict]:
     """
     Remove phones that were messaged recently or are not on WhatsApp.
     Uses formatted phone (first number only) so dedup matches message_log.
     At most one entry per normalized phone per run (same-run dedup).
+    Dedup is per wa_account — each WA number has independent history.
     Returns filtered queue.
     """
     filtered = []
@@ -574,7 +575,7 @@ def apply_dedup_to_queue(queue: List[Dict], days_window: int = 30) -> List[Dict]
         if normalized in seen_normalized:
             skipped_recent += 1
             continue
-        should_skip, reason = should_skip_phone(normalized, days_window)
+        should_skip, reason = should_skip_phone(normalized, days_window, wa_account=wa_account)
         if should_skip:
             if reason == 'not_on_whatsapp':
                 skipped_not_on_wa += 1

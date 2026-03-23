@@ -12,7 +12,7 @@ from typing import Optional, List, Dict
 LOG_FILE = Path(__file__).parent / "message_log.csv"
 REPLY_LOG_FILE = Path(__file__).parent / "reply_log.csv"
 LOG_HEADERS = [
-    'timestamp', 'campaign_id', 'phone', 'owner_name', 'building', 
+    'timestamp', 'campaign_id', 'wa_account', 'phone', 'owner_name', 'building',
     'unit', 'template_type', 'message', 'status', 'error'
 ]
 REPLY_LOG_HEADERS = ['phone', 'detected_at']
@@ -36,16 +36,18 @@ def log_message(
     template_type: str,
     message: str,
     status: str,  # 'sent', 'failed', 'not_on_whatsapp'
-    error: str = ''
+    error: str = '',
+    wa_account: str = '1',
 ):
     """Append a message send attempt to the log."""
     initialize_log()
-    
+
     with open(LOG_FILE, 'a', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=LOG_HEADERS)
         writer.writerow({
             'timestamp': datetime.now().isoformat(),
             'campaign_id': campaign_id,
+            'wa_account': wa_account,
             'phone': phone,
             'owner_name': owner_name,
             'building': building,
@@ -81,17 +83,18 @@ def was_messaged_recently(phone: str, days: int = 30) -> bool:
     return False
 
 
-def was_ever_messaged(phone: str) -> bool:
+def was_ever_messaged(phone: str, wa_account: str = '1') -> bool:
     """
-    Check if a phone was ever messaged (any time in the log).
+    Check if a phone was ever messaged by this WA account.
     Returns True if phone should be SKIPPED (we have any prior conversation).
+    Old rows without wa_account default to account '1' for backward compat.
     """
     if not LOG_FILE.exists():
         return False
     with open(LOG_FILE, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            if row['phone'] == phone:
+            if row['phone'] == phone and row.get('wa_account', '1') == wa_account:
                 return True
     return False
 
@@ -113,18 +116,18 @@ def is_not_on_whatsapp(phone: str) -> bool:
     return False
 
 
-def should_skip_phone(phone: str, days_window: int = 30) -> tuple[bool, str]:
+def should_skip_phone(phone: str, days_window: int = 30, wa_account: str = '1') -> tuple[bool, str]:
     """
     Check if phone should be skipped (dedup logic).
     Returns (should_skip: bool, reason: str).
-    Skips if ever messaged (any prior conversation) or not on WhatsApp.
+    Skips if ever messaged by this account, or not on WhatsApp (global).
     """
     if is_not_on_whatsapp(phone):
         return (True, 'not_on_whatsapp')
-    
-    if was_ever_messaged(phone):
+
+    if was_ever_messaged(phone, wa_account=wa_account):
         return (True, 'ever_messaged')
-    
+
     return (False, '')
 
 

@@ -3866,6 +3866,7 @@ def render_whatsapp_page():
                     cmd.append("--override-limit")
                 if no_limits:
                     cmd.append("--no-limits")
+                cmd.extend(["--account", _wa_acct_num])
                 if campaign_type == 'propspace_leads':
                     if ps_lead_type != 'Both':
                         cmd.extend(['--lead-type', ps_lead_type.lower()])
