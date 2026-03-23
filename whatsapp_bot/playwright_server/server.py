@@ -310,7 +310,7 @@ async def _start_playwright() -> None:
     await _page.goto("https://web.whatsapp.com", wait_until="domcontentloaded", timeout=30000)
 
     _poller_task = asyncio.create_task(_poll_connection())
-    log.info(f"[START] ORVA Playwright server on http://127.0.0.1:{PORT}")
+    log.info(f"[START] ORVA Playwright server on http://0.0.0.0:{PORT}")
 
 
 # ---------------------------------------------------------------------------
@@ -1086,4 +1086,4 @@ async def _playwright_send_voice(phone: str, audio_duration: float) -> dict:
 # Entry point
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
