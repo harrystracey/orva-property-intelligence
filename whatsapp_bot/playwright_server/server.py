@@ -621,26 +621,25 @@ async def _playwright_get_link_code(phone_number: str) -> str:
                 await _page.keyboard.type(country_name, delay=60)
                 await asyncio.sleep(1.2)
 
-                # Click the matching list item (role=option, li, or any visible element)
-                _country_clicked = await _page.evaluate(f"""
-                    () => {{
-                        const target = '{country_name}';
-                        for (const sel of ['[role="option"]', 'li', '[data-testid*="list"]', 'div']) {{
-                            for (const el of document.querySelectorAll(sel)) {{
-                                if (!el.offsetParent) continue;
-                                const t = (el.innerText || el.textContent || '').trim().replace(/\\s+/g, ' ');
-                                if (t === target || t.startsWith(target)) {{
-                                    el.click();
-                                    return 'clicked-list:' + t.slice(0, 30);
-                                }}
-                            }}
-                        }}
-                        return null;
-                    }}
-                """)
+                # Click with Playwright native mouse (JS .click() doesn't trigger React handlers)
+                _country_clicked = False
+                for _attempt in range(4):
+                    try:
+                        await _page.get_by_text(country_name, exact=True).first.click(timeout=3000)
+                        _country_clicked = True
+                        log.info(f"[LINK] Country clicked (exact native): {country_name}")
+                        break
+                    except Exception:
+                        pass
+                    try:
+                        await _page.get_by_text(country_name[:12]).first.click(timeout=2000)
+                        _country_clicked = True
+                        log.info(f"[LINK] Country clicked (partial native): {country_name[:12]}")
+                        break
+                    except Exception:
+                        await asyncio.sleep(0.3)
 
                 if not _country_clicked:
-                    # Fallback: press Enter to confirm first filtered result
                     await _page.keyboard.press("Enter")
                     _country_clicked = "Enter-fallback"
 
