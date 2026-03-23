@@ -300,6 +300,7 @@ async def _start_playwright() -> None:
             f"--use-file-for-fake-audio-capture={FAKE_MIC_PATH}",
         ],
         viewport={"width": 1280, "height": 900},
+        user_agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     )
 
     # Reuse existing page or open a new one
