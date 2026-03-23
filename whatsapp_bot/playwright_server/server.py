@@ -621,15 +621,34 @@ async def _playwright_get_link_code(phone_number: str) -> str:
                 await _page.keyboard.type(country_name, delay=60)
                 await asyncio.sleep(1.2)
 
-                # Use keyboard navigation: ArrowDown selects first filtered result, Enter confirms
-                await _page.keyboard.press("ArrowDown")
-                await asyncio.sleep(0.3)
-                await _page.keyboard.press("Enter")
-                _country_clicked = "keyboard-arrow-enter"
-                log.info(f"[LINK] Country selected via ArrowDown+Enter")
+                # Use JS to find the first list item's coordinates, then real mouse click
+                pos = await _page.evaluate("""
+                    () => {
+                        for (const sel of ['[role="option"]', 'li', '[role="listitem"]', 'div[class*="item"]']) {
+                            for (const el of document.querySelectorAll(sel)) {
+                                if (!el.offsetParent) continue;
+                                const r = el.getBoundingClientRect();
+                                if (r.width > 50 && r.height > 20 && r.top > 100) {
+                                    return {x: r.left + r.width / 2, y: r.top + r.height / 2};
+                                }
+                            }
+                        }
+                        return null;
+                    }
+                """)
+                if pos:
+                    await _page.mouse.click(pos['x'], pos['y'])
+                    _country_clicked = f"mouse-coord:{pos}"
+                    log.info(f"[LINK] Clicked list item at coords {pos}")
+                else:
+                    await _page.keyboard.press("Enter")
+                    _country_clicked = "Enter-fallback"
+                    log.info("[LINK] No list item found — pressed Enter as fallback")
 
-                log.info(f"[LINK] Country list item: {_country_clicked}")
-                await asyncio.sleep(0.8)
+                # Force-close dropdown before touching phone input
+                await asyncio.sleep(0.5)
+                await _page.keyboard.press("Escape")
+                await asyncio.sleep(1.0)
 
                 # Verify the country changed
                 current_country = await _page.evaluate("""
