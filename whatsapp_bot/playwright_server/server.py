@@ -614,31 +614,8 @@ async def _playwright_get_link_code(phone_number: str) -> str:
                 except Exception:
                     pass
 
-                # Log ALL visible inputs sorted by y position
-                input_info = await _page.evaluate("""
-                    () => Array.from(document.querySelectorAll('input'))
-                        .filter(i => i.offsetParent !== null && i.offsetWidth > 20)
-                        .sort((a,b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)
-                        .map(i => `${i.type}|${i.placeholder||''}|${i.offsetWidth}x${i.offsetHeight}|y=${Math.round(i.getBoundingClientRect().top)}`)
-                """)
-                log.info(f"[LINK] Inputs after dropdown: {input_info}")
-
-                # Focus the topmost visible input (overlay search box should be above phone input)
-                search_focused = await _page.evaluate("""
-                    () => {
-                        const inputs = Array.from(document.querySelectorAll('input'))
-                            .filter(i => i.offsetParent !== null && i.offsetWidth > 40)
-                            .sort((a,b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
-                        if (inputs.length > 0) {
-                            inputs[0].focus();
-                            inputs[0].click();
-                            const r = inputs[0].getBoundingClientRect();
-                            return `y=${Math.round(r.top)} w=${inputs[0].offsetWidth} type=${inputs[0].type}`;
-                        }
-                        return null;
-                    }
-                """)
-                log.info(f"[LINK] Topmost input focused: {search_focused}")
+                # The dropdown search input auto-focuses when opened — type directly, no click needed
+                log.info(f"[LINK] Typing country name into auto-focused search box: {country_name}")
 
                 # Type country name into search field
                 await _page.keyboard.type(country_name, delay=60)
