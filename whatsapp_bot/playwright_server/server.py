@@ -670,34 +670,35 @@ async def _playwright_get_link_code(phone_number: str) -> str:
         # ── Step 4: fill the local phone number ──────────────────────────────
         fill_number = local_number if country_name else phone_number
         filled = False
-        for sel in ['input[type="tel"]', 'input[inputmode="tel"]', 'input[inputmode="numeric"]']:
+        for sel in ['input[type="tel"]', 'input[inputmode="tel"]', 'input[inputmode="numeric"]', 'input[type="text"]']:
             inp = await _page.query_selector(sel)
-            if inp:
+            if inp and await inp.is_visible():
                 await inp.click()
-                await inp.fill("")
-                await inp.type(fill_number, delay=60)
+                await _page.keyboard.press("Control+A")
+                await _page.keyboard.press("Delete")
+                await _page.keyboard.type(fill_number, delay=80)
                 filled = True
-                log.info(f"[LINK] Entered number via {sel}: {fill_number}")
+                log.info(f"[LINK] Entered number via keyboard {sel}: {fill_number}")
                 break
 
         if not filled:
-            await _page.evaluate(f"""
-                () => {{
+            # Last resort: find first visible wide input and type via keyboard
+            clicked = await _page.evaluate("""
+                () => {
                     const inputs = Array.from(document.querySelectorAll('input')).filter(
                         i => i.offsetWidth > 80 && i.offsetParent !== null
                     );
-                    if (!inputs.length) return;
-                    const inp = inputs[0];
-                    inp.focus();
-                    const setter = Object.getOwnPropertyDescriptor(
-                        window.HTMLInputElement.prototype, 'value'
-                    ).set;
-                    setter.call(inp, '{fill_number}');
-                    inp.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                    inp.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                }}
+                    if (!inputs.length) return false;
+                    inputs[0].focus();
+                    return true;
+                }
             """)
-            log.info(f"[LINK] Entered number via React setter: {fill_number}")
+            if clicked:
+                await _page.keyboard.press("Control+A")
+                await _page.keyboard.press("Delete")
+                await _page.keyboard.type(fill_number, delay=80)
+                log.info(f"[LINK] Entered number via keyboard fallback: {fill_number}")
+            filled = clicked
 
         await asyncio.sleep(0.5)
 
