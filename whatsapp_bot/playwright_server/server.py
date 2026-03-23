@@ -645,10 +645,7 @@ async def _playwright_get_link_code(phone_number: str) -> str:
                     _country_clicked = "Enter-fallback"
                     log.info("[LINK] No list item found — pressed Enter as fallback")
 
-                # Force-close dropdown before touching phone input
-                await asyncio.sleep(0.5)
-                await _page.keyboard.press("Escape")
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(0.8)  # let dropdown close animation finish
 
                 # Verify the country changed
                 current_country = await _page.evaluate("""
