@@ -9,6 +9,9 @@ services:
     ports:
       - "8501:8501"
     env_file: .env
+    environment:
+      WA_HOST_1: "wa-1"
+      WA_HOST_2: "wa-2"
     volumes:
       - ./data:/app/data
       - ./lead_database:/app/lead_database

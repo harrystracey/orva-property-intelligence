@@ -3466,7 +3466,9 @@ def render_whatsapp_page():
     for _port in ["3001", "3002"]:
         if f'wa_baileys_status_{_port}' not in st.session_state:
             try:
-                _r = requests.get(f"http://127.0.0.1:{_port}/status", timeout=2)
+                _wa_acct = "1" if _port == "3001" else "2"
+                _wa_host = os.environ.get(f"WA_HOST_{_wa_acct}", os.environ.get("WA_HOST", "127.0.0.1"))
+                _r = requests.get(f"http://{_wa_host}:{_port}/status", timeout=2)
                 _rj = _r.json()
                 st.session_state[f'wa_baileys_status_{_port}'] = _rj
                 if _rj.get('qr_b64'):
@@ -3489,7 +3491,7 @@ def render_whatsapp_page():
         _wa_acct_label = st.selectbox("WhatsApp Account", list(_WA_PORTS.keys()), key="wa_account_select", label_visibility="collapsed")
         _wa_port = _WA_PORTS[_wa_acct_label]
         _wa_acct_num = "1" if _wa_port == "3001" else "2"
-        _baileys_base = f"http://127.0.0.1:{_wa_port}"
+        _baileys_base = f"http://{os.environ.get(f'WA_HOST_{_wa_acct_num}', os.environ.get('WA_HOST', '127.0.0.1'))}:{_wa_port}"
         st.session_state['wa_active_account'] = _wa_acct_num
 
         if st.button("🔄 Refresh Status", type="primary", use_container_width=True, key="wa_refresh_btn"):
