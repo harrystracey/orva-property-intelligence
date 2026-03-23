@@ -730,12 +730,25 @@ async def _playwright_get_link_code(phone_number: str) -> str:
 
         # ── Step 6: extract the pairing code ─────────────────────────────────
         for attempt in range(20):  # poll up to ~40s
+            # Screenshot + body text on first attempt for diagnostics
+            if attempt == 0:
+                try:
+                    _buf = await _page.screenshot()
+                    with open('/tmp/wa_code_page.png', 'wb') as _f:
+                        _f.write(_buf)
+                except Exception:
+                    pass
+                body_text = await _page.evaluate("() => document.body.innerText.slice(0, 800)")
+                log.info(f"[LINK][CODE-PAGE] {body_text!r}")
+
             code = await _page.evaluate("""
                 () => {
+                    // Try known testids
                     for (const sel of [
                         '[data-testid="link-with-phone-number-code"]',
                         '[data-testid="phonecode-login-code"]',
                         '[data-testid="pairing-code"]',
+                        '[data-testid*="code"]',
                     ]) {
                         const el = document.querySelector(sel);
                         if (el) {
@@ -743,15 +756,18 @@ async def _playwright_get_link_code(phone_number: str) -> str:
                             if (t.length >= 8) return t.slice(0,4) + '-' + t.slice(t.length-4);
                         }
                     }
-                    const walker = document.createTreeWalker(
-                        document.body, NodeFilter.SHOW_TEXT, null
-                    );
+                    // Text walker: exact match
+                    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
                     let node;
                     while ((node = walker.nextNode())) {
                         const t = (node.textContent || '').trim();
-                        if (/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(t)) return t;
-                        if (/^[A-Z0-9]{8}$/.test(t)) return t.slice(0,4) + '-' + t.slice(4);
+                        if (/^[A-Z0-9]{4}-[A-Z0-9]{4}$/i.test(t)) return t.toUpperCase();
+                        if (/^[A-Z0-9]{8}$/i.test(t)) return t.slice(0,4).toUpperCase() + '-' + t.slice(4).toUpperCase();
                     }
+                    // Body text scan: code may be embedded in longer text
+                    const body = document.body.innerText || '';
+                    const m = body.match(/\\b([A-Z0-9]{4})[\\s\\-]([A-Z0-9]{4})\\b/i);
+                    if (m) return m[1].toUpperCase() + '-' + m[2].toUpperCase();
                     return null;
                 }
             """)
