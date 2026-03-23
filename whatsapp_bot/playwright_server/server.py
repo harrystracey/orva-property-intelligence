@@ -621,27 +621,12 @@ async def _playwright_get_link_code(phone_number: str) -> str:
                 await _page.keyboard.type(country_name, delay=60)
                 await asyncio.sleep(1.2)
 
-                # Click with Playwright native mouse (JS .click() doesn't trigger React handlers)
-                _country_clicked = False
-                for _attempt in range(4):
-                    try:
-                        await _page.get_by_text(country_name, exact=True).first.click(timeout=3000)
-                        _country_clicked = True
-                        log.info(f"[LINK] Country clicked (exact native): {country_name}")
-                        break
-                    except Exception:
-                        pass
-                    try:
-                        await _page.get_by_text(country_name[:12]).first.click(timeout=2000)
-                        _country_clicked = True
-                        log.info(f"[LINK] Country clicked (partial native): {country_name[:12]}")
-                        break
-                    except Exception:
-                        await asyncio.sleep(0.3)
-
-                if not _country_clicked:
-                    await _page.keyboard.press("Enter")
-                    _country_clicked = "Enter-fallback"
+                # Use keyboard navigation: ArrowDown selects first filtered result, Enter confirms
+                await _page.keyboard.press("ArrowDown")
+                await asyncio.sleep(0.3)
+                await _page.keyboard.press("Enter")
+                _country_clicked = "keyboard-arrow-enter"
+                log.info(f"[LINK] Country selected via ArrowDown+Enter")
 
                 log.info(f"[LINK] Country list item: {_country_clicked}")
                 await asyncio.sleep(0.8)
