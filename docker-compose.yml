@@ -16,6 +16,7 @@ services:
       - ./logs:/app/logs
       - ./client_data:/app/client_data
       - ./chat_history:/app/chat_history
+      - ./credentials.yaml:/app/credentials.yaml:ro
     restart: unless-stopped
 
   wa-1:
