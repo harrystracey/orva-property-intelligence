@@ -712,6 +712,18 @@ async def _playwright_get_link_code(phone_number: str) -> str:
                 if (form) { form.requestSubmit(); return 'form'; }
             }
         """)
+        # Screenshot + input dump for diagnostics
+        try:
+            _buf = await _page.screenshot()
+            with open('/tmp/wa_before_next.png', 'wb') as _f:
+                _f.write(_buf)
+        except Exception:
+            pass
+        _inp_vals = await _page.evaluate("""
+            () => Array.from(document.querySelectorAll('input')).filter(i => i.offsetParent !== null)
+                .map(i => `${i.type}|val=${i.value}|${i.offsetWidth}x${i.offsetHeight}`)
+        """)
+        log.info(f"[LINK] Before Next — inputs: {_inp_vals}")
         log.info("[LINK] Clicked Next, waiting for pairing code...")
         await asyncio.sleep(4.0)
 
