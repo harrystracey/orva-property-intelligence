@@ -786,6 +786,8 @@ async def _playwright_get_link_code(phone_number: str) -> str:
                     const body = document.body.innerText || '';
                     if (/valid phone number is required/i.test(body))
                         return 'Invalid phone number — check country and digits';
+                    if (/too many attempts/i.test(body))
+                        return 'Too many attempts — WhatsApp rate limit. Wait a few hours and try again.';
                     return null;
                 }
             """)
