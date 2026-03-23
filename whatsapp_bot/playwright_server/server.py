@@ -663,24 +663,24 @@ async def _playwright_get_link_code(phone_number: str) -> str:
 
             await asyncio.sleep(0.5)
 
-        # ── Step 4: fill the local phone number ──────────────────────────────
-        fill_number = local_number if country_name else phone_number
+        # ── Step 4: fill the phone number ────────────────────────────────────
+        # Type the full E.164 number (+971551289700) — WA auto-detects country from +971 prefix.
+        # This bypasses country dropdown state issues entirely.
+        full_number = f"+{phone_number}" if not phone_number.startswith('+') else phone_number
         filled = False
         for sel in ['input[type="tel"]', 'input[inputmode="tel"]', 'input[inputmode="numeric"]', 'input[type="text"]']:
             inp = await _page.query_selector(sel)
             if inp and await inp.is_visible():
                 await inp.click()
-                await _page.keyboard.press("End")
-                # Select only the editable digits (not the country prefix) and replace
-                for _ in range(20):
-                    await _page.keyboard.press("Backspace")
-                await _page.keyboard.type(fill_number, delay=80)
+                await _page.keyboard.press("Control+A")
+                await _page.keyboard.press("Delete")
+                await asyncio.sleep(0.3)
+                await _page.keyboard.type(full_number, delay=80)
                 filled = True
-                log.info(f"[LINK] Entered number via keyboard {sel}: {fill_number}")
+                log.info(f"[LINK] Entered full number via {sel}: {full_number}")
                 break
 
         if not filled:
-            # Last resort: find first visible wide input and type via keyboard
             clicked = await _page.evaluate("""
                 () => {
                     const inputs = Array.from(document.querySelectorAll('input')).filter(
@@ -694,8 +694,9 @@ async def _playwright_get_link_code(phone_number: str) -> str:
             if clicked:
                 await _page.keyboard.press("Control+A")
                 await _page.keyboard.press("Delete")
-                await _page.keyboard.type(fill_number, delay=80)
-                log.info(f"[LINK] Entered number via keyboard fallback: {fill_number}")
+                await asyncio.sleep(0.3)
+                await _page.keyboard.type(full_number, delay=80)
+                log.info(f"[LINK] Entered full number via fallback: {full_number}")
             filled = clicked
 
         await asyncio.sleep(0.5)
