@@ -522,15 +522,7 @@ async def _playwright_get_link_code(phone_number: str) -> str:
         country_code, local_number, country_name = _parse_phone(phone_number)
         log.info(f"[LINK] Parsed: +{country_code} ({country_name}) local={local_number}")
 
-        # ── Step 3: change country dropdown (custom React — NOT a native <select>) ─
-        # WA Web uses a custom component; select_option() and flag-emoji regex both fail.
-        # Strategy (in order):
-        #   A. Known data-testid selectors
-        #   B. role="combobox" / aria-haspopup elements near the phone input
-        #   C. Any element whose visible text contains the current country name
-        #   D. Tab+Enter to open the first focusable dropdown
-        # After opening, type to search then click/Enter to confirm.
-
+        # ── Step 3: change country dropdown ──────────────────────────────
         await asyncio.sleep(2.0)  # let the "Enter phone number" form fully render
 
         if country_name:
@@ -538,132 +530,140 @@ async def _playwright_get_link_code(phone_number: str) -> str:
             dom_info = await _page.evaluate("""
                 () => {
                     const rows = [];
-                    const els = document.querySelectorAll(
-                        '[data-testid], [role="combobox"], [role="listbox"], ' +
-                        '[aria-haspopup], button, input, select'
-                    );
+                    const els = document.querySelectorAll('[data-testid], [role="combobox"], button, input, select');
                     for (const el of els) {
                         const r = el.getBoundingClientRect();
                         if (r.width === 0 && r.height === 0) continue;
                         const tid  = el.getAttribute('data-testid') || '';
                         const role = el.getAttribute('role') || '';
-                        const ahp  = el.getAttribute('aria-haspopup') || '';
                         const t    = (el.innerText || el.textContent || '').trim().replace(/\\s+/g,' ').slice(0,40);
-                        rows.push(`${el.tagName}[testid=${tid}][role=${role}][haspopup=${ahp}] "${t}" ${Math.round(r.width)}x${Math.round(r.height)}`);
-                        if (rows.length >= 40) break;
+                        rows.push(`${el.tagName}[testid=${tid}][role=${role}] "${t}" ${Math.round(r.width)}x${Math.round(r.height)}`);
+                        if (rows.length >= 60) break;
                     }
                     return rows.join(' | ');
                 }
             """)
             log.info(f"[LINK][DOM] {dom_info}")
 
-            # ── Strategy A: known WA Web testid selectors ─────────────────────
-            dropdown_opened = await _page.evaluate("""
-                () => {
-                    const ids = [
-                        'phone-number-country',
-                        'country-selector',
-                        'link-device-phone-num-country-dropdown',
-                        'link-phone-number-country-select',
-                        'intro-country-picker',
-                    ];
-                    for (const id of ids) {
-                        const el = document.querySelector(`[data-testid="${id}"]`);
-                        if (el) { el.click(); return 'testid:' + id; }
-                    }
-                    return null;
-                }
-            """)
+            # ── Strategy 0: native <select> (new WA Web UI) ───────────────────
+            dropdown_opened = None
+            try:
+                await _page.select_option('select', label=country_name, timeout=1500)
+                dropdown_opened = 'native-select'
+                log.info(f"[LINK] Country set via native select: {country_name}")
+            except Exception:
+                pass
 
-            # ── Strategy B: role="combobox" or aria-haspopup near phone input ─
             if not dropdown_opened:
+                # ── Strategy A: known testid selectors ────────────────────────
                 dropdown_opened = await _page.evaluate("""
                     () => {
-                        for (const sel of ['[role="combobox"]', '[aria-haspopup="listbox"]',
-                                           '[aria-haspopup="true"]', '[aria-haspopup="dialog"]']) {
+                        const ids = ['phone-number-country','country-selector',
+                                     'link-device-phone-num-country-dropdown',
+                                     'link-phone-number-country-select','intro-country-picker'];
+                        for (const id of ids) {
+                            const el = document.querySelector(`[data-testid="${id}"]`);
+                            if (el) { el.click(); return 'testid:' + id; }
+                        }
+                        return null;
+                    }
+                """)
+
+            if not dropdown_opened:
+                # ── Strategy B: combobox / select element by visible text ──────
+                dropdown_opened = await _page.evaluate("""
+                    () => {
+                        for (const sel of ['[role="combobox"]','[aria-haspopup="listbox"]',
+                                           '[aria-haspopup="true"]','[aria-haspopup="dialog"]']) {
                             const el = document.querySelector(sel);
                             if (el && el.offsetParent !== null) {
                                 const r = el.getBoundingClientRect();
-                                if (r.width > 20 && r.height > 10) {
-                                    el.click();
-                                    return 'role:' + sel;
-                                }
+                                if (r.width > 20 && r.height > 10) { el.click(); return 'role:' + sel; }
                             }
                         }
                         return null;
                     }
                 """)
 
-            # ── Strategy C: button-only search ────────────────────────────────
-            # DOM dump confirmed: country dropdown is a plain <button> with text = geo-country
-            # (e.g. "China" 320x52). Labels like "Enter phone number" are div/span and are
-            # excluded by querying only button elements. No testid/role on this element.
             if not dropdown_opened:
+                # ── Strategy C: first non-action button (the country button) ───
                 dropdown_opened = await _page.evaluate("""
                     () => {
                         const SKIP = /^(next|back|done|cancel|ok|yes|no|close|submit|continue|confirm|search|clear|delete|edit|save|send|log in|sign in|link with phone|get link code|scan|qr|retry)$/i;
-                        const buttons = document.querySelectorAll('button');
-                        for (const btn of buttons) {
+                        for (const btn of document.querySelectorAll('button')) {
                             if (!btn.offsetParent) continue;
                             const t = (btn.innerText || btn.textContent || '').trim();
-                            if (!t || t.length < 2 || t.length > 40) continue;
-                            if (/\\d/.test(t)) continue;
-                            if (SKIP.test(t)) continue;
+                            if (!t || t.length < 2 || t.length > 40 || /\\d/.test(t) || SKIP.test(t)) continue;
                             const r = btn.getBoundingClientRect();
-                            if (r.width > 80 && r.height > 20 && r.height < 100) {
-                                btn.click();
-                                return 'button:' + t;
-                            }
+                            if (r.width > 80 && r.height > 20 && r.height < 100) { btn.click(); return 'button:' + t; }
                         }
                         return null;
                     }
                 """)
 
-            # ── Strategy D: click left of the phone input (where dropdown sits) ─
-            if not dropdown_opened:
-                inp_box = await _page.evaluate("""
+            if dropdown_opened and dropdown_opened != 'native-select':
+                log.info(f"[LINK] Country dropdown opened via: {dropdown_opened}")
+                await asyncio.sleep(1.2)  # wait for search overlay to appear
+
+                # Find the search input that appeared inside the dropdown overlay
+                search_focused = await _page.evaluate("""
                     () => {
-                        const inp = document.querySelector(
-                            'input[type="tel"], input[inputmode="tel"], input[inputmode="numeric"]'
-                        );
-                        if (!inp) return null;
-                        const r = inp.getBoundingClientRect();
-                        return {x: Math.max(10, r.left - 80), y: r.top + r.height / 2};
+                        // Prefer a search-type input; fall back to any newly visible input
+                        for (const sel of ['input[type="search"]', 'input[placeholder]', 'input[type="text"]', 'input']) {
+                            const inp = document.querySelector(sel);
+                            if (inp && inp.offsetParent !== null && inp.offsetWidth > 40) {
+                                inp.focus();
+                                return sel;
+                            }
+                        }
+                        return null;
                     }
                 """)
-                if inp_box and inp_box.get("x", 0) > 0:
-                    await _page.mouse.click(inp_box["x"], inp_box["y"])
-                    dropdown_opened = f"coord-left-of-input"
-                else:
-                    dropdown_opened = "coord-fallback-failed"
-                log.warning(f"[LINK] Country dropdown: coordinate fallback → {dropdown_opened}")
+                log.info(f"[LINK] Search input focused: {search_focused}")
 
-            log.info(f"[LINK] Country dropdown opened via: {dropdown_opened}")
-            await asyncio.sleep(1.0)  # wait for search overlay to appear
+                # Type country name into search field
+                await _page.keyboard.type(country_name, delay=60)
+                await asyncio.sleep(1.2)
 
-            # Type country name to filter the list
-            await _page.keyboard.type(country_name[:6], delay=60)
-            await asyncio.sleep(0.8)
+                # Click the matching list item (role=option, li, or any visible element)
+                _country_clicked = await _page.evaluate(f"""
+                    () => {{
+                        const target = '{country_name}';
+                        for (const sel of ['[role="option"]', 'li', '[data-testid*="list"]', 'div']) {{
+                            for (const el of document.querySelectorAll(sel)) {{
+                                if (!el.offsetParent) continue;
+                                const t = (el.innerText || el.textContent || '').trim().replace(/\\s+/g, ' ');
+                                if (t === target || t.startsWith(target)) {{
+                                    el.click();
+                                    return 'clicked-list:' + t.slice(0, 30);
+                                }}
+                            }}
+                        }}
+                        return null;
+                    }}
+                """)
 
-            # Click the matching option in the filtered list
-            _country_clicked = False
-            for _attempt in range(3):
-                try:
-                    await _page.get_by_text(country_name, exact=True).first.click(timeout=2000)
-                    log.info(f"[LINK] Country selected (exact): {country_name}")
-                    _country_clicked = True
-                    break
-                except Exception:
-                    try:
-                        await _page.get_by_text(country_name[:8]).first.click(timeout=2000)
-                        log.info(f"[LINK] Country selected (partial): {country_name[:8]}")
-                        _country_clicked = True
-                        break
-                    except Exception:
-                        await asyncio.sleep(0.3)
+                if not _country_clicked:
+                    # Fallback: press Enter to confirm first filtered result
+                    await _page.keyboard.press("Enter")
+                    _country_clicked = "Enter-fallback"
 
-            if not _country_clicked:
-                log.warning("[LINK] Country option not clicked — proceeding anyway (no Enter — it submits the form)")
+                log.info(f"[LINK] Country list item: {_country_clicked}")
+                await asyncio.sleep(0.8)
+
+                # Verify the country changed
+                current_country = await _page.evaluate("""
+                    () => {
+                        for (const btn of document.querySelectorAll('button')) {
+                            const t = (btn.innerText||btn.textContent||'').trim();
+                            if (t.length > 2 && t.length < 40 && !/\\d/.test(t) && btn.offsetParent) return t;
+                        }
+                        const sel = document.querySelector('select');
+                        if (sel) return sel.options[sel.selectedIndex]?.text || '';
+                        return '';
+                    }
+                """)
+                log.info(f"[LINK] Country after selection: {current_country}")
 
             await asyncio.sleep(0.5)
 
