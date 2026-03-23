@@ -54,6 +54,7 @@ async def run_campaign(
     not_yet_contacted: bool = False,
     exclude_file=None,
     no_limits: bool = False,
+    account: str = '1',
 ):
     """Execute a WhatsApp campaign."""
     campaign_id = f"{campaign_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -127,7 +128,7 @@ async def run_campaign(
         return
     
     # Apply dedup
-    queue = apply_dedup_to_queue(queue, days_window=30)
+    queue = apply_dedup_to_queue(queue, days_window=30, wa_account=account)
     
     if not queue:
         print("[ERROR] Queue is empty after dedup (all phones messaged recently)")
@@ -270,7 +271,7 @@ async def run_campaign(
                 print(f"[{idx}/{len(queue)}] SKIP: Invalid phone for {item['owner_name']}")
                 continue
 
-            if was_ever_messaged(phone_formatted):
+            if was_ever_messaged(phone_formatted, wa_account=account):
                 print(f"[{idx}/{len(queue)}] [SKIP] Already conversed: {item['owner_name']}")
                 skipped_already_messaged += 1
                 continue
@@ -278,7 +279,7 @@ async def run_campaign(
             print(f"[{idx}/{len(queue)}] {item['owner_name']} - {item['building']} Unit {item['unit']}")
 
             # Send message
-            result = await send_message(page, phone_formatted, item['message'])
+            result = await send_message(page, phone_formatted, item['message'], account=account)
             # Log result
             log_message(
                 campaign_id=campaign_id,
@@ -289,7 +290,8 @@ async def run_campaign(
                 template_type=item['template_type'],
                 message=item['message'],
                 status=result['status'],
-                error=result.get('error', '')
+                error=result.get('error', ''),
+                wa_account=account,
             )
 
             # Update counters
@@ -480,7 +482,9 @@ def main():
                         help='JSON file with phone numbers to skip (written by app queue preview)')
     parser.add_argument('--no-limits', action='store_true', dest='no_limits',
                         help='Skip all delays, caps and pauses. Send continuously until done or Ctrl+C.')
-    
+    parser.add_argument('--account', type=str, default='1', choices=['1', '2'],
+                        help='WhatsApp account to use (1=port 3001, 2=port 3002). Default: 1')
+
     args = parser.parse_args()
     
     if args.mark_restricted:
@@ -522,6 +526,7 @@ def main():
         not_yet_contacted=getattr(args, "not_yet_contacted", False),
         exclude_file=getattr(args, "exclude_file", None),
         no_limits=getattr(args, "no_limits", False),
+        account=getattr(args, "account", "1"),
     ))
 
 
