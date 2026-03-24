@@ -250,7 +250,18 @@ async def run_campaign(
         existing_chat_count = 0
         skipped_already_messaged = 0
 
+        _stop_flag = Path(__file__).resolve().parent / "stop_campaign.flag"
+
         for idx, item in enumerate(queue, 1):
+            # Check for manual stop from app UI
+            if _stop_flag.exists():
+                try:
+                    _stop_flag.unlink()
+                except Exception:
+                    pass
+                print("\n[STOP] Campaign stopped by user.")
+                break
+
             # Check if should stop
             if not no_limits:
                 should_stop, stop_reason = rate_limiter.should_stop_session()

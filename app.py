@@ -3833,15 +3833,25 @@ def render_whatsapp_page():
         st.divider()
         
         # Preview button
-        col_preview, col_send = st.columns(2)
-        
+        col_preview, col_send, col_stop = st.columns(3)
+
         with col_preview:
             if st.button(" Preview Queue", type="secondary", use_container_width=True):
                 st.session_state['preview_queue'] = True
-        
+
+        with col_stop:
+            if st.button("⏹ Stop Campaign", type="secondary", use_container_width=True):
+                _stop_flag = Path(__file__).resolve().parent / "whatsapp_bot" / "stop_campaign.flag"
+                _stop_flag.touch()
+                st.warning("Stop signal sent — campaign will stop after the current message.")
+
         with col_send:
             if st.button(" Start Campaign", type="primary", use_container_width=True):
                 root = Path(__file__).resolve().parent
+                # Clear any leftover stop flag from a previous run
+                _sf = root / "whatsapp_bot" / "stop_campaign.flag"
+                if _sf.exists():
+                    _sf.unlink()
                 cmd = [
                     sys.executable,
                     str(root / "whatsapp_bot" / "run_campaign.py"),
