@@ -1,5 +1,39 @@
 services:
 
+  # --- NEW: ORVA Web App (Next.js + FastAPI) ---
+
+  api:
+    build:
+      context: .
+      dockerfile: orva_api/Dockerfile
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      WA_HOST_1: "wa-1"
+      WA_HOST_2: "wa-2"
+    volumes:
+      - ./data:/app/data
+      - ./lead_database:/app/lead_database
+      - ./scraped_data:/app/scraped_data
+      - ./client_data:/app/client_data
+      - ./chat_history:/app/chat_history
+      - ./whatsapp_bot:/app/whatsapp_bot
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./orva-web
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: "http://api:8000"
+    restart: unless-stopped
+    depends_on:
+      - api
+
+  # --- LEGACY: Streamlit app (runs until cutover) ---
+
   streamlit:
     build:
       context: .
