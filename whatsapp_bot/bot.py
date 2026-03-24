@@ -9,7 +9,12 @@ import os
 import re
 import random
 import requests
-from playwright.async_api import async_playwright, Page, Browser
+try:
+    from playwright.async_api import async_playwright, Page, Browser
+except ImportError:
+    async_playwright = None  # Not needed for HTTP-only usage (API container)
+    Page = None
+    Browser = None
 from typing import Optional, Dict
 
 
