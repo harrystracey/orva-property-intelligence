@@ -18,7 +18,7 @@ if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
 
 from .deps import data_store
-from .routers import auth, leads, clients, whatsapp, rentals
+from .routers import auth, leads, clients, whatsapp, rentals, contacts, matcher, bayut, client_match
 
 # --- Logging setup ---
 logging.basicConfig(
@@ -84,6 +84,10 @@ app.include_router(leads.router)
 app.include_router(clients.router)
 app.include_router(whatsapp.router)
 app.include_router(rentals.router)
+app.include_router(contacts.router)
+app.include_router(matcher.router)
+app.include_router(bayut.router)
+app.include_router(client_match.router)
 
 
 @app.get("/api/health")

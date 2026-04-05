@@ -525,16 +525,13 @@ export interface Contact {
 export interface ContactListResponse {
   contacts: Contact[];
   total: number;
-  page: number;
-  page_size: number;
 }
 
-export async function getContacts(params: { search?: string; contact_type?: string; page?: number; page_size?: number } = {}): Promise<ContactListResponse> {
+export async function getContacts(params: { q?: string; contact_type?: string; limit?: number } = {}): Promise<ContactListResponse> {
   const p = new URLSearchParams();
-  if (params.search) p.set("search", params.search);
+  if (params.q) p.set("q", params.q);
   if (params.contact_type) p.set("contact_type", params.contact_type);
-  if (params.page) p.set("page", String(params.page));
-  if (params.page_size) p.set("page_size", String(params.page_size));
+  if (params.limit) p.set("limit", String(params.limit));
   return request(`/api/contacts?${p}`);
 }
 
@@ -542,7 +539,7 @@ export async function getContact(id: number): Promise<Contact> {
   return request(`/api/contacts/${id}`);
 }
 
-export async function createContact(data: Partial<Contact> & { properties?: Partial<ContactProperty>[] }): Promise<{ id: number }> {
+export async function createContact(data: Partial<Contact> & { properties?: Partial<ContactProperty>[] }): Promise<{ contact_id: number }> {
   return request("/api/contacts", { method: "POST", body: JSON.stringify(data) });
 }
 
@@ -554,7 +551,7 @@ export async function deleteContact(id: number): Promise<void> {
   await request(`/api/contacts/${id}`, { method: "DELETE" });
 }
 
-export async function addContactProperty(contactId: number, data: Partial<ContactProperty>): Promise<{ id: number }> {
+export async function addContactProperty(contactId: number, data: Partial<ContactProperty>): Promise<{ property_id: number }> {
   return request(`/api/contacts/${contactId}/properties`, { method: "POST", body: JSON.stringify(data) });
 }
 
@@ -565,26 +562,30 @@ export async function deleteContactProperty(contactId: number, propId: number): 
 // --- Listing Matcher ---
 
 export interface MatchResult {
-  owner_name: string | null;
-  phone: string | null;
-  building_name: string | null;
-  unit_number: string | null;
-  bedrooms: number | null;
+  building: string;
+  unit: string;
   size_sqft: number | null;
+  beds: string | null;
+  owner_name: string;
+  phone: string;
+  phone_display: string;
+  email: string;
+  source_file: string;
+  transaction_date: string;
+  transaction_value: number | null;
   confidence: number;
-  match_method: string;
-  client_id: string | null;
+  match_type: string;
 }
 
 export interface MatchRequest {
-  building: string;
+  building_name: string;
   unit_number?: string;
-  bedrooms?: number;
+  bedrooms?: string;
   size_sqft?: number;
   listing_url?: string;
 }
 
-export async function matchListing(req: MatchRequest): Promise<{ matches: MatchResult[]; total: number }> {
+export async function matchListing(req: MatchRequest): Promise<{ results: MatchResult[]; count: number }> {
   return request("/api/matcher/match", { method: "POST", body: JSON.stringify(req) });
 }
 
@@ -594,12 +595,12 @@ export interface BayutListing {
   listing_url: string | null;
   building_name: string | null;
   bedrooms: number | null;
+  bathrooms: number | null;
   size_sqft: number | null;
   price_aed: number | null;
   listing_type: string | null;
-  price_per_sqft: number | null;
-  furnished: string | null;
-  floor: string | null;
+  view: string | null;
+  listing_title: string | null;
   scraped_at: string | null;
 }
 
@@ -610,27 +611,41 @@ export interface BayutListingsResponse {
   page_size: number;
 }
 
-export async function getBayutListings(params: { building?: string; bedrooms?: string; listing_type?: string; min_price?: number; max_price?: number; page?: number; page_size?: number } = {}): Promise<BayutListingsResponse> {
+export async function getBayutListings(params: { building?: string; bedrooms?: string; listing_type?: string; page?: number; page_size?: number } = {}): Promise<BayutListingsResponse> {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== "") p.set(k, String(v));
   }
-  return request(`/api/bayut/listings?${p}`);
+  return request(`/api/bayut?${p}`);
+}
+
+export async function getBayutStats(): Promise<{ total: number; for_rent: number; for_sale: number; buildings: number }> {
+  return request("/api/bayut/stats");
 }
 
 // --- Client Match ---
 
 export interface ClientMatchResult {
-  contact_id: number;
-  contact_name: string | null;
-  contact_phone: string | null;
-  contact_type: string | null;
-  budget_min: number | null;
-  budget_max: number | null;
-  matched_listings: BayutListing[];
-  match_score: number;
+  building_name: string | null;
+  bedrooms: number | null;
+  size_sqft: number | null;
+  price_aed: number | null;
+  listing_type: string | null;
+  view: string | null;
+  listing_title: string | null;
+  listing_url: string | null;
 }
 
-export async function findClientMatches(contactId: number): Promise<{ matches: BayutListing[]; total: number }> {
-  return request(`/api/client-match/${contactId}`);
+export interface ClientMatchRequest {
+  listing_type?: string;
+  bedrooms?: number | string;
+  budget_min?: number;
+  budget_max?: number;
+  building?: string;
+  size_min?: number;
+  size_max?: number;
+}
+
+export async function findClientMatches(req: ClientMatchRequest): Promise<{ results: ClientMatchResult[]; total: number }> {
+  return request("/api/client-match/search", { method: "POST", body: JSON.stringify(req) });
 }
