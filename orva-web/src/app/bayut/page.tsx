@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { LoginForm } from "@/components/login-form";
 import { getBayutListings, getBayutStats, BayutListing } from "@/lib/api";
-import { Home, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { Home, ChevronLeft, ChevronRight, ExternalLink, Crosshair, RefreshCw } from "lucide-react";
 
 const PAGE_SIZE = 50;
 
@@ -15,6 +16,7 @@ function formatAED(n: number | null | undefined) {
 
 export default function BayutPage() {
   const { authenticated } = useAuth();
+  const router = useRouter();
   const [listings, setListings] = useState<BayutListing[]>([]);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState<{ total: number; for_rent: number; for_sale: number; buildings: number } | null>(null);
@@ -23,6 +25,8 @@ export default function BayutPage() {
   const [bedrooms, setBedrooms] = useState("");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMsg, setRefreshMsg] = useState("");
 
   const loadStats = useCallback(async () => {
     try { setStats(await getBayutStats()); } catch { /* ignore */ }
@@ -46,6 +50,31 @@ export default function BayutPage() {
 
   useEffect(() => { if (authenticated) { loadStats(); loadListings(); } }, [authenticated, loadStats, loadListings]);
 
+  const handleMatchOwner = (l: BayutListing) => {
+    const params = new URLSearchParams();
+    if (l.building_name) params.set("building", l.building_name);
+    if (l.size_sqft) params.set("size", String(Math.round(l.size_sqft)));
+    if (l.bedrooms != null) params.set("beds", l.bedrooms === 0 ? "Studio" : String(l.bedrooms));
+    router.push(`/matcher?${params.toString()}`);
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setRefreshMsg("");
+    try {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const token = localStorage.getItem("orva_token");
+      const res = await fetch(`${API_BASE}/api/bayut/refresh`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setRefreshMsg(data.message || "Scrape started in background");
+    } catch {
+      setRefreshMsg("Failed to start scrape — is Chrome running with --remote-debugging-port=9222?");
+    } finally { setRefreshing(false); }
+  };
+
   if (!authenticated) return <LoginForm />;
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -55,7 +84,19 @@ export default function BayutPage() {
       <div className="flex items-center gap-2">
         <Home size={20} className="text-accent" />
         <h1 className="text-lg font-semibold text-foreground">Bayut Listings</h1>
+        <button
+          onClick={handleRefresh}
+          disabled={refreshing}
+          className="ml-auto flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:text-foreground disabled:opacity-50"
+        >
+          <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />
+          {refreshing ? "Starting..." : "Refresh Data"}
+        </button>
       </div>
+
+      {refreshMsg && (
+        <div className="rounded-lg border border-border bg-card px-4 py-2 text-xs text-muted">{refreshMsg}</div>
+      )}
 
       {/* Stats */}
       {stats && (
@@ -100,16 +141,16 @@ export default function BayutPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-border bg-background/50">
-                {["Building", "Beds", "Size", "Price", "Type", "View", "Link"].map(h => (
+                {["Building", "Beds", "Size", "Price", "Type", "View", "Link", ""].map(h => (
                   <th key={h} className="whitespace-nowrap px-4 py-2 text-left text-xs font-medium text-muted">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-muted">Loading...</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-muted">Loading...</td></tr>
               ) : listings.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-muted">No listings found</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-sm text-muted">No listings found</td></tr>
               ) : listings.map((l, i) => (
                 <tr key={i} className="border-b border-border/50 hover:bg-card-hover">
                   <td className="px-4 py-2 text-sm text-foreground">{l.building_name || "--"}</td>
@@ -133,6 +174,14 @@ export default function BayutPage() {
                         <ExternalLink size={12} /> View
                       </a>
                     ) : <span className="text-xs text-muted">--</span>}
+                  </td>
+                  <td className="px-4 py-2">
+                    <button
+                      onClick={() => handleMatchOwner(l)}
+                      className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted hover:border-accent hover:text-accent"
+                    >
+                      <Crosshair size={11} /> Match Owner
+                    </button>
                   </td>
                 </tr>
               ))}

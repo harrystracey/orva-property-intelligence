@@ -1,6 +1,7 @@
 """Bayut listings browser API router."""
 
 import sys
+import subprocess
 from pathlib import Path
 
 import pandas as pd
@@ -95,6 +96,26 @@ def list_listings(
         })
 
     return {"listings": listings, "total": total, "page": page, "page_size": page_size}
+
+
+@router.post("/refresh")
+def refresh_bayut(user: dict = Depends(get_current_user)):
+    """Launch Bayut scraper as a background process. Requires Chrome with --remote-debugging-port=9222."""
+    global _df_cache
+    script = _root / "bayut_scraper" / "run_palm_listings.py"
+    if not script.exists():
+        return {"ok": False, "message": "Scraper script not found"}
+    try:
+        subprocess.Popen(
+            [sys.executable, str(script), "--type", "both"],
+            cwd=str(_root),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        _df_cache = None  # Clear cache so next read picks up new data
+        return {"ok": True, "message": "Scrape started in background. Data will update when complete (requires Chrome on port 9222)."}
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
 
 
 @router.get("/stats")

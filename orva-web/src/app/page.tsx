@@ -1,17 +1,24 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { LoginForm } from "@/components/login-form";
 import { FilterPanel } from "@/components/filter-panel";
 import { LeadTable } from "@/components/lead-table";
-import { searchLeads, lookupClientId, LeadFilters, LeadSearchResponse, LeadRecord } from "@/lib/api";
-import { Download } from "lucide-react";
+import { searchLeads, lookupClientId, LeadFilters, LeadSearchResponse, LeadRecord, getHealth, getRentalsStats, getBayutStats } from "@/lib/api";
+import { Download, Database, AlertTriangle, Home, Users } from "lucide-react";
+
+interface DashStats {
+  totalLeads: number;
+  expiring30: number;
+  bayutListings: number;
+}
 
 export default function LeadSearchPage() {
   const { authenticated } = useAuth();
   const router = useRouter();
+  const [dashStats, setDashStats] = useState<DashStats | null>(null);
   const [filters, setFilters] = useState<LeadFilters>({
     page: 1,
     page_size: 250,
@@ -33,6 +40,18 @@ export default function LeadSearchPage() {
       setLoading(false);
     }
   }, [filters]);
+
+  // Load dashboard stats
+  useEffect(() => {
+    if (!authenticated) return;
+    Promise.allSettled([getHealth(), getRentalsStats(), getBayutStats()]).then(([h, r, b]) => {
+      setDashStats({
+        totalLeads: h.status === "fulfilled" ? (h.value.total_leads ?? 0) : 0,
+        expiring30: r.status === "fulfilled" ? (r.value.expiring_30 ?? 0) : 0,
+        bayutListings: b.status === "fulfilled" ? (b.value.total ?? 0) : 0,
+      });
+    });
+  }, [authenticated]);
 
   // Initial load
   useEffect(() => {
@@ -85,8 +104,19 @@ export default function LeadSearchPage() {
     return <LoginForm />;
   }
 
+
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 pb-20 md:pb-4">
+      {/* Dashboard stat cards */}
+      {dashStats && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <DashCard icon={<Database size={16} />} label="Total Leads" value={dashStats.totalLeads.toLocaleString()} href="/" />
+          <DashCard icon={<AlertTriangle size={16} />} label="Expiring ≤30d" value={dashStats.expiring30.toLocaleString()} href="/lease-expiry" urgent={dashStats.expiring30 > 0} />
+          <DashCard icon={<Home size={16} />} label="Bayut Listings" value={dashStats.bayutListings.toLocaleString()} href="/bayut" />
+          <DashCard icon={<Users size={16} />} label="Contacts" value="View" href="/contacts" />
+        </div>
+      )}
+
       {/* Page header */}
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-foreground">Lead Search</h1>
@@ -127,5 +157,20 @@ export default function LeadSearchPage() {
         loading={loading}
       />
     </div>
+  );
+}
+
+function DashCard({ icon, label, value, href, urgent }: { icon: React.ReactNode; label: string; value: string; href: string; urgent?: boolean }) {
+  const router = useRouter();
+  return (
+    <button
+      onClick={() => router.push(href)}
+      className="rounded-lg border border-border bg-card p-3 text-left hover:border-accent/50 hover:bg-card-hover transition-colors"
+    >
+      <div className={`flex items-center gap-1.5 text-xs mb-1 ${urgent ? "text-danger" : "text-muted"}`}>
+        {icon}{label}
+      </div>
+      <div className={`text-2xl font-bold ${urgent ? "text-danger" : "text-foreground"}`}>{value}</div>
+    </button>
   );
 }

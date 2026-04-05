@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { LoginForm } from "@/components/login-form";
 import { getContacts, createContact, deleteContact, Contact } from "@/lib/api";
-import { Users, Plus, Trash2, Phone, Mail, Search, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Users, Plus, Trash2, Phone, Mail, Search, X, Crosshair } from "lucide-react";
 
 const TYPE_LABELS: Record<string, string> = {
   buyer: "Buyer",
@@ -21,6 +22,7 @@ function formatAED(n: number | null | undefined) {
 
 export default function ContactsPage() {
   const { authenticated } = useAuth();
+  const router = useRouter();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [total, setTotal] = useState(0);
   const [query, setQuery] = useState("");
@@ -217,6 +219,22 @@ export default function ContactsPage() {
             } />
             <Row label="Source" value={selected.source ?? "--"} />
             <Row label="Agent" value={selected.agent_assigned ?? "--"} />
+
+            {/* Find matching listings for this client */}
+            {(selected.contact_type === "buyer" || selected.contact_type === "tenant") && (
+              <button
+                onClick={() => {
+                  const p = new URLSearchParams();
+                  p.set("type", selected.contact_type === "buyer" ? "sale" : "rent");
+                  if (selected.budget_min) p.set("budget_min", String(selected.budget_min));
+                  if (selected.budget_max) p.set("budget_max", String(selected.budget_max));
+                  router.push(`/client-match?${p.toString()}`);
+                }}
+                className="flex items-center justify-center gap-2 rounded-lg bg-accent/10 py-2 text-sm font-medium text-accent hover:bg-accent/20"
+              >
+                <Crosshair size={14} /> Find Matching Listings
+              </button>
+            )}
 
             {selected.properties && selected.properties.length > 0 && (
               <div>

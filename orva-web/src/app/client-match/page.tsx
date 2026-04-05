@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { LoginForm } from "@/components/login-form";
 import { findClientMatches, ClientMatchResult } from "@/lib/api";
@@ -11,13 +12,13 @@ function formatAED(n: number | null | undefined) {
   return "AED " + Math.round(n).toLocaleString();
 }
 
-export default function ClientMatchPage() {
-  const { authenticated } = useAuth();
-  const [listingType, setListingType] = useState("rent");
-  const [bedrooms, setBedrooms] = useState("");
-  const [budgetMin, setBudgetMin] = useState("");
-  const [budgetMax, setBudgetMax] = useState("");
-  const [building, setBuilding] = useState("");
+function ClientMatchForm() {
+  const searchParams = useSearchParams();
+  const [listingType, setListingType] = useState(searchParams.get("type") || "rent");
+  const [bedrooms, setBedrooms] = useState(searchParams.get("beds") || "");
+  const [budgetMin, setBudgetMin] = useState(searchParams.get("budget_min") || "");
+  const [budgetMax, setBudgetMax] = useState(searchParams.get("budget_max") || "");
+  const [building, setBuilding] = useState(searchParams.get("building") || "");
   const [sizeMin, setSizeMin] = useState("");
   const [sizeMax, setSizeMax] = useState("");
   const [results, setResults] = useState<ClientMatchResult[]>([]);
@@ -25,6 +26,13 @@ export default function ClientMatchPage() {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState("");
+
+  // Auto-search if we arrived with pre-filled params from Contacts page
+  useEffect(() => {
+    if (searchParams.get("budget_max") || searchParams.get("beds")) {
+      handleSearch();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = async () => {
     setError("");
@@ -48,17 +56,8 @@ export default function ClientMatchPage() {
     } finally { setLoading(false); }
   };
 
-  if (!authenticated) return <LoginForm />;
-
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4 pb-20 md:pb-4">
-      <div className="flex items-center gap-2">
-        <Crosshair size={20} className="text-accent" />
-        <h1 className="text-lg font-semibold text-foreground">Client Match</h1>
-        <span className="text-xs text-muted">Find available listings that match a client brief</span>
-      </div>
-
-      {/* Filters */}
+    <>
       <div className="rounded-xl border border-border bg-card p-4">
         <p className="mb-3 text-xs text-muted">Enter your client&apos;s requirements to find matching Bayut listings</p>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
@@ -110,17 +109,13 @@ export default function ClientMatchPage() {
           </div>
         </div>
         {error && <p className="mt-2 text-xs text-danger">{error}</p>}
-        <button
-          onClick={handleSearch}
-          disabled={loading}
-          className="mt-4 flex items-center gap-2 rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
-        >
+        <button onClick={handleSearch} disabled={loading}
+          className="mt-4 flex items-center gap-2 rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50">
           <Search size={14} />
           {loading ? "Searching..." : "Find Matches"}
         </button>
       </div>
 
-      {/* Results */}
       {searched && (
         <div className="overflow-hidden rounded-xl border border-border bg-card">
           <div className="border-b border-border px-4 py-2">
@@ -174,6 +169,24 @@ export default function ClientMatchPage() {
           )}
         </div>
       )}
+    </>
+  );
+}
+
+export default function ClientMatchPage() {
+  const { authenticated } = useAuth();
+  if (!authenticated) return <LoginForm />;
+
+  return (
+    <div className="flex flex-1 flex-col gap-4 p-4 pb-20 md:pb-4">
+      <div className="flex items-center gap-2">
+        <Crosshair size={20} className="text-accent" />
+        <h1 className="text-lg font-semibold text-foreground">Client Match</h1>
+        <span className="text-xs text-muted">Find available listings that match a client brief</span>
+      </div>
+      <Suspense fallback={<div className="text-sm text-muted">Loading...</div>}>
+        <ClientMatchForm />
+      </Suspense>
     </div>
   );
 }

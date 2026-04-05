@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { LoginForm } from "@/components/login-form";
 import { matchListing, MatchResult } from "@/lib/api";
@@ -18,17 +19,24 @@ const MATCH_TYPE_LABEL: Record<string, string> = {
   beds_range: "Beds + Size",
 };
 
-export default function MatcherPage() {
-  const { authenticated } = useAuth();
-  const [building, setBuilding] = useState("");
-  const [unit, setUnit] = useState("");
-  const [size, setSize] = useState("");
-  const [bedrooms, setBedrooms] = useState("");
+function MatcherForm() {
+  const searchParams = useSearchParams();
+  const [building, setBuilding] = useState(searchParams.get("building") || "");
+  const [unit, setUnit] = useState(searchParams.get("unit") || "");
+  const [size, setSize] = useState(searchParams.get("size") || "");
+  const [bedrooms, setBedrooms] = useState(searchParams.get("beds") || "");
   const [url, setUrl] = useState("");
   const [results, setResults] = useState<MatchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState("");
+
+  // Auto-run if we arrived with pre-filled params from Bayut page
+  useEffect(() => {
+    if (searchParams.get("building") && searchParams.get("size")) {
+      handleMatch();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleMatch = async () => {
     if (!building.trim()) { setError("Building name is required"); return; }
@@ -50,58 +58,33 @@ export default function MatcherPage() {
     } finally { setLoading(false); }
   };
 
-  if (!authenticated) return <LoginForm />;
-
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4 pb-20 md:pb-4">
-      <div className="flex items-center gap-2">
-        <Crosshair size={20} className="text-accent" />
-        <h1 className="text-lg font-semibold text-foreground">Listing Matcher</h1>
-      </div>
-
+    <>
       {/* Input form */}
       <div className="rounded-xl border border-border bg-card p-4">
         <p className="mb-3 text-xs text-muted">Enter listing details to find the owner in the database</p>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
           <div>
             <label className="mb-1 block text-xs text-muted">Building *</label>
-            <input
-              type="text"
-              placeholder="e.g. Shoreline 5"
-              value={building}
-              onChange={e => setBuilding(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && handleMatch()}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent"
-            />
+            <input type="text" placeholder="e.g. Shoreline 5" value={building}
+              onChange={e => setBuilding(e.target.value)} onKeyDown={e => e.key === "Enter" && handleMatch()}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent" />
           </div>
           <div>
             <label className="mb-1 block text-xs text-muted">Unit Number</label>
-            <input
-              type="text"
-              placeholder="e.g. 204"
-              value={unit}
-              onChange={e => setUnit(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && handleMatch()}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent"
-            />
+            <input type="text" placeholder="e.g. 204" value={unit}
+              onChange={e => setUnit(e.target.value)} onKeyDown={e => e.key === "Enter" && handleMatch()}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent" />
           </div>
           <div>
             <label className="mb-1 block text-xs text-muted">Size (sqft)</label>
-            <input
-              type="number"
-              placeholder="e.g. 1250"
-              value={size}
-              onChange={e => setSize(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent"
-            />
+            <input type="number" placeholder="e.g. 1250" value={size} onChange={e => setSize(e.target.value)}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent" />
           </div>
           <div>
             <label className="mb-1 block text-xs text-muted">Bedrooms</label>
-            <select
-              value={bedrooms}
-              onChange={e => setBedrooms(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent"
-            >
+            <select value={bedrooms} onChange={e => setBedrooms(e.target.value)}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent">
               <option value="">Any</option>
               <option value="Studio">Studio</option>
               <option value="1">1 BR</option>
@@ -113,21 +96,13 @@ export default function MatcherPage() {
           </div>
           <div className="md:col-span-2">
             <label className="mb-1 block text-xs text-muted">Listing URL (optional)</label>
-            <input
-              type="text"
-              placeholder="https://bayut.com/..."
-              value={url}
-              onChange={e => setUrl(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent"
-            />
+            <input type="text" placeholder="https://bayut.com/..." value={url} onChange={e => setUrl(e.target.value)}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent" />
           </div>
         </div>
         {error && <p className="mt-2 text-xs text-danger">{error}</p>}
-        <button
-          onClick={handleMatch}
-          disabled={loading}
-          className="mt-4 flex items-center gap-2 rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50"
-        >
+        <button onClick={handleMatch} disabled={loading}
+          className="mt-4 flex items-center gap-2 rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50">
           <Search size={14} />
           {loading ? "Matching..." : "Find Owner"}
         </button>
@@ -140,7 +115,7 @@ export default function MatcherPage() {
             <span className="text-sm text-muted">{results.length} match{results.length !== 1 ? "es" : ""} found</span>
           </div>
           {results.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-muted">No matches found — try removing unit number or adjusting size</div>
+            <div className="px-4 py-8 text-center text-sm text-muted">No matches — try removing unit number or adjusting size</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -177,6 +152,23 @@ export default function MatcherPage() {
           )}
         </div>
       )}
+    </>
+  );
+}
+
+export default function MatcherPage() {
+  const { authenticated } = useAuth();
+  if (!authenticated) return <LoginForm />;
+
+  return (
+    <div className="flex flex-1 flex-col gap-4 p-4 pb-20 md:pb-4">
+      <div className="flex items-center gap-2">
+        <Crosshair size={20} className="text-accent" />
+        <h1 className="text-lg font-semibold text-foreground">Listing Matcher</h1>
+      </div>
+      <Suspense fallback={<div className="text-sm text-muted">Loading...</div>}>
+        <MatcherForm />
+      </Suspense>
     </div>
   );
 }
