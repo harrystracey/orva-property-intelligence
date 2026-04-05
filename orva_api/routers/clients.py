@@ -109,11 +109,36 @@ def remove_reminder(
 
 # ─── Global Call Log ───
 
-@router.get("/calls/all", response_model=list[CallRecord])
+@router.get("/calls/all")
 def list_all_calls(
+    page: int = 1,
+    page_size: int = 50,
+    search: str = "",
+    outcome: str = "",
     user: dict = Depends(get_current_user),
 ):
-    return [CallRecord(**c) for c in get_call_log()]
+    all_calls = get_call_log()
+    # Filter by outcome
+    if outcome:
+        all_calls = [c for c in all_calls if c.get("outcome") == outcome]
+    # Filter by search term
+    if search:
+        q = search.lower()
+        all_calls = [
+            c for c in all_calls
+            if q in (c.get("client_name") or "").lower()
+            or q in (c.get("building") or "").lower()
+            or q in (c.get("phone") or "").lower()
+        ]
+    total = len(all_calls)
+    start = (max(1, page) - 1) * page_size
+    page_calls = all_calls[start:start + page_size]
+    return {
+        "calls": [CallRecord(**c) for c in page_calls],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -131,24 +156,13 @@ def get_client_profile(
     """Get full client profile: lead info + notes + reminders + calls + portfolio."""
     df = store.leads_df
 
-    # Build a lookup column for client_id matching
-    # Pre-compute for the specific client_id to avoid iterating 78K rows
-    match = None
-    owner_name_val = None
-
-    for _, row in df.iterrows():
-        rid = make_client_id(
-            name=row.get("owner_name"),
-            building=row.get("building_name"),
-            unit=row.get("unit_number"),
-        )
-        if rid == client_id:
-            match = row
-            owner_name_val = row.get("owner_name") if pd.notna(row.get("owner_name")) else None
-            break
-
-    if match is None:
+    # O(1) lookup via pre-computed index
+    idx = store.client_id_index.get(client_id)
+    if idx is None:
         raise HTTPException(status_code=404, detail="Client not found")
+
+    match = df.iloc[idx]
+    owner_name_val = match.get("owner_name") if pd.notna(match.get("owner_name")) else None
 
     # Portfolio: all properties by this owner
     portfolio = []

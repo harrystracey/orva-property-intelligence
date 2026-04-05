@@ -1,27 +1,42 @@
 """
 JWT authentication for ORVA API.
 Replaces streamlit-authenticator YAML credentials.
+Users loaded from client_data/users.json (not hardcoded).
 """
 
+import json
+import logging
 import jwt
 import bcrypt
 from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from .config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRY_HOURS
+from .config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRY_HOURS, CLIENT_DATA_DIR
+
+logger = logging.getLogger("orva_api")
 
 security = HTTPBearer()
 
-# Hardcoded users (migrated from credentials.yaml)
-# In production, move to database
-USERS = {
-    "harry": {
-        "name": "Harry",
-        "email": "harry@edwardstowers.com",
-        "password_hash": "$2b$12$DdHzZfPl8E7ON9XE.C3OxOxESoTGwIHwNEPcLpgCrIgdiQeQhZ3J6",
-    }
-}
+USERS_FILE = CLIENT_DATA_DIR / "users.json"
+
+
+def _load_users() -> dict:
+    """Load users from client_data/users.json."""
+    if not USERS_FILE.exists():
+        logger.error("users.json not found at %s", USERS_FILE)
+        return {}
+    with open(USERS_FILE) as f:
+        return json.load(f)
+
+
+def _save_users(users: dict):
+    """Save users back to client_data/users.json."""
+    with open(USERS_FILE, "w") as f:
+        json.dump(users, f, indent=2)
+
+
+USERS = _load_users()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:

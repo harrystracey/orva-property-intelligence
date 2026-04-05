@@ -13,7 +13,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
 # --- Auth ---
-JWT_SECRET = os.getenv("JWT_SECRET", "orva-jwt-secret-change-in-production")
+JWT_SECRET = os.getenv("JWT_SECRET")
+if not JWT_SECRET:
+    raise RuntimeError("JWT_SECRET environment variable is required. Add it to your .env file.")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_HOURS = 24 * 30  # 30 days
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { LeadFilters } from "@/lib/api";
 import { SlidersHorizontal, ChevronDown, ChevronUp, RotateCw } from "lucide-react";
 
@@ -18,10 +18,20 @@ export function FilterPanel({
   totalResults,
 }: FilterPanelProps) {
   const [expanded, setExpanded] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const update = (patch: Partial<LeadFilters>) => {
     onChange({ ...filters, ...patch, page: 1 });
   };
+
+  // Debounced auto-search for text input changes
+  const updateAndDebounce = (patch: Partial<LeadFilters>) => {
+    update(patch);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => onSearch(), 350);
+  };
+
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
 
   const reset = () => {
     onChange({ page: 1, page_size: 250, sort_by: "completeness" });
@@ -68,7 +78,7 @@ export function FilterPanel({
           type="text"
           placeholder="Owner name"
           value={filters.owner_name || ""}
-          onChange={(e) => update({ owner_name: e.target.value })}
+          onChange={(e) => updateAndDebounce({ owner_name: e.target.value })}
           onKeyDown={handleKeyDown}
           className={`${inputClass} max-w-48`}
         />
@@ -76,7 +86,7 @@ export function FilterPanel({
           type="text"
           placeholder="Building"
           value={filters.building_search || ""}
-          onChange={(e) => update({ building_search: e.target.value })}
+          onChange={(e) => updateAndDebounce({ building_search: e.target.value })}
           onKeyDown={handleKeyDown}
           className={`${inputClass} max-w-40`}
         />

@@ -214,13 +214,15 @@ async def get_stats(user: dict = Depends(get_current_user)):
     )
 
 
-@router.get("/messages", response_model=MessageLogResponse)
+@router.get("/messages")
 async def get_messages(
-    limit: int = Query(100, ge=1, le=1000),
+    limit: int = Query(500, ge=1, le=5000),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
     search: str | None = None,
     user: dict = Depends(get_current_user),
 ):
-    """Get recent messages with optional search."""
+    """Get recent messages with optional search and pagination."""
     messages = await asyncio.to_thread(get_recent_messages, limit)
     if search:
         q = search.lower()
@@ -230,8 +232,11 @@ async def get_messages(
             or q in (m.get("building", "") or "").lower()
             or q in (m.get("phone", "") or "").lower()
         ]
-    entries = [MessageLogEntry(**m) for m in messages]
-    return MessageLogResponse(messages=entries, total=len(entries))
+    total = len(messages)
+    start = (page - 1) * page_size
+    page_messages = messages[start:start + page_size]
+    entries = [MessageLogEntry(**m) for m in page_messages]
+    return {"messages": entries, "total": total, "page": page, "page_size": page_size}
 
 
 @router.get("/messages/export")
