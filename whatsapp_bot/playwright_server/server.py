@@ -461,29 +461,13 @@ async def _playwright_get_link_code(phone_number: str) -> str:
     Acquires _page_lock for its entire run — poller is blocked while we drive the page.
     """
     async with _page_lock:
-        # ── Step 0: ensure we're on WA Web ───────────────────────────────────
-        # Only navigate if the page has drifted — avoids redundant goto when already there.
+        # ── Step 0: always reload WA Web for a clean QR/login page ─────────────
+        # We always navigate fresh so we're never stuck on a pairing code screen,
+        # tel-input form, or any other intermediate state from a previous attempt.
         try:
-            if "web.whatsapp.com" not in (_page.url or ""):
-                await _page.goto("https://web.whatsapp.com",
-                                 wait_until="domcontentloaded", timeout=30000)
-                await asyncio.sleep(4)
-            else:
-                await asyncio.sleep(1)  # brief settle — already on WA Web
-        except Exception:
-            pass
-
-        # If the phone entry form is already open, we're stuck from a previous failed attempt.
-        # Reload to get a fresh QR/login screen so Step 1 can find its button.
-        try:
-            _stuck = await _page.evaluate(
-                "() => !!document.querySelector('input[type=\"tel\"], input[inputmode=\"tel\"]')"
-            )
-            if _stuck:
-                log.info("[LINK] Phone form from previous attempt detected — reloading for fresh state")
-                await _page.goto("https://web.whatsapp.com",
-                                 wait_until="domcontentloaded", timeout=30000)
-                await asyncio.sleep(4)
+            await _page.goto("https://web.whatsapp.com",
+                             wait_until="domcontentloaded", timeout=30000)
+            await asyncio.sleep(5)  # give WA Web time to render the login screen
         except Exception:
             pass
 
