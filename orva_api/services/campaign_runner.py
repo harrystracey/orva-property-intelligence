@@ -5,6 +5,7 @@ Imports existing whatsapp_bot modules directly.
 """
 
 import asyncio
+import logging
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -34,12 +35,15 @@ from whatsapp_bot.message_log import log_message, get_today_send_count, was_ever
 from whatsapp_bot.rate_limiter import RateLimiter, mark_restriction_now
 from whatsapp_bot.message_templates import format_first_name
 
+from ..config import WA_HOST_1, WA_HOST_2
 from ..schemas.whatsapp import (
     CampaignProgress,
     CampaignStartRequest,
     CampaignPreviewRequest,
     QueueContact,
 )
+
+logger = logging.getLogger("orva_api.campaign")
 
 
 class CampaignState:
@@ -60,6 +64,30 @@ class CampaignState:
 
 # Module-level singleton
 campaign_state = CampaignState()
+
+# Stop campaign after this many consecutive send failures (not "not_on_whatsapp")
+MAX_CONSECUTIVE_FAILURES = 5
+
+
+async def _check_wa_connected(account: str) -> tuple[bool, str]:
+    """Pre-flight check: verify the WA server is reachable and connected."""
+    import httpx
+    host = WA_HOST_2 if account == "2" else WA_HOST_1
+    port = 3002 if account == "2" else 3001
+    url = f"http://{host}:{port}/status"
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(url, timeout=5)
+            data = r.json()
+            if data.get("connected"):
+                return True, f"Connected — phone: {data.get('phone', 'unknown')}"
+            if data.get("qr_available"):
+                return False, "WhatsApp not connected — QR code is showing. Scan it first in the WhatsApp page."
+            return False, "WhatsApp not connected and no QR yet. Check the WA container is running."
+    except httpx.ConnectError:
+        return False, f"WA server not reachable at {url}. Is the wa-{account} container running?"
+    except Exception as e:
+        return False, f"WA server error: {str(e)[:200]}"
 
 
 def build_queue(params) -> list[dict]:
@@ -188,6 +216,13 @@ async def run_campaign_task(params: CampaignStartRequest):
     state.progress = CampaignProgress(status="building", total=0)
 
     try:
+        # 0. Pre-flight: verify WA is connected before doing any work
+        connected, reason = await _check_wa_connected(params.account)
+        if not connected:
+            state.progress = CampaignProgress(status="error", error=reason)
+            logger.warning("Campaign aborted — WA not connected: %s", reason)
+            return
+
         # 1. Build queue
         queue = await asyncio.to_thread(build_queue, params)
         if not queue:
@@ -241,6 +276,7 @@ async def run_campaign_task(params: CampaignStartRequest):
         # 7. Send loop
         campaign_id = f"{params.campaign_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         start_time = datetime.now()
+        consecutive_failures = 0
 
         for idx, item in enumerate(queue):
             # Check stop
@@ -305,10 +341,23 @@ async def run_campaign_task(params: CampaignStartRequest):
             status = result.get("status", "failed")
             if status == "sent":
                 state.progress.sent += 1
+                consecutive_failures = 0
             elif status == "failed":
                 state.progress.failed += 1
+                consecutive_failures += 1
             elif status == "not_on_whatsapp":
                 state.progress.not_on_wa += 1
+                consecutive_failures = 0  # not-on-WA is valid, not a server failure
+
+            # Circuit breaker: stop if WA server is likely down
+            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                state.progress.status = "error"
+                state.progress.error = (
+                    f"{MAX_CONSECUTIVE_FAILURES} consecutive send failures — "
+                    "WhatsApp may be disconnected. Check connection and retry."
+                )
+                logger.warning("Campaign stopped — %d consecutive failures", consecutive_failures)
+                break
 
             rate_limiter.record_send_attempt(status, item.get("template_type", ""))
             state.progress.messages_today = await asyncio.to_thread(get_today_send_count)

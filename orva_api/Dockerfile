@@ -2,9 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libglib2.0-0 curl && \
-    rm -rf /var/lib/apt/lists/*
+# Avoid apt in this image to prevent Windows/WSL apt networking instability during build.
+# API requirements here install from Python wheels and do not require extra OS packages.
 
 # Install API dependencies
 COPY orva_api/requirements.txt /app/orva_api/requirements.txt

@@ -1,4 +1,7 @@
 .git
+.claude/
+.cursor/
+agent-transcripts/
 __pycache__
 *.pyc
 *.pyo

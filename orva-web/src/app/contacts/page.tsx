@@ -242,7 +242,13 @@ export default function ContactsPage() {
                 {selected.properties.map((p, i) => (
                   <div key={i} className="mb-2 rounded-lg border border-border bg-background p-3 text-xs">
                     <p className="font-medium text-foreground">{p.building_name} {p.unit_number && `#${p.unit_number}`}</p>
-                    <p className="text-muted">{p.bedrooms != null ? (p.bedrooms === 0 ? "Studio" : `${p.bedrooms} BR`) : ""}{p.intent ? ` · ${p.intent}` : ""}{p.price_aed ? ` · ${formatAED(p.price_aed)}` : ""}</p>
+                    <p className="text-muted">
+                      {p.bedrooms != null
+                        ? (String(p.bedrooms) === "0" ? "Studio" : `${p.bedrooms} BR`)
+                        : ""}
+                      {p.intent ? ` · ${p.intent}` : ""}
+                      {p.price_aed ? ` · ${formatAED(p.price_aed)}` : ""}
+                    </p>
                   </div>
                 ))}
               </div>

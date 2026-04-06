@@ -83,6 +83,8 @@ _page_lock: asyncio.Lock = None  # type: ignore  # initialised in _start_playwri
 _link_code: str = ""
 _link_code_error: str = ""
 _link_code_pending: bool = False
+_link_code_active: bool = False    # True while pairing session is active — poller must not touch the page
+_link_debug_screenshot: str | None = None  # base64 PNG of last debug screenshot from link flow
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +174,7 @@ async def _poll_connection() -> None:
 
     while True:
         await asyncio.sleep(2)          # outside lock — yields to link flow while it holds lock
-        if _page is None:
+        if _page is None or _link_code_active:
             continue
         try:
             async with _page_lock:
@@ -386,22 +388,74 @@ async def link_start(body: dict):
 
 async def _run_link_code_flow(phone_number: str) -> None:
     global _link_code, _link_code_error, _link_code_pending
+    global _link_code_active, _is_connected, _connected_phone
+    _link_code_active = True
+    max_attempts = 2
     try:
-        code = await _playwright_get_link_code(phone_number)
-        _link_code = code
-        _log_action(f"Link code ready for ...{phone_number[-4:]}: {code}")
+        for attempt in range(max_attempts):
+            if attempt > 0:
+                _log_action(f"Retrying link code (attempt {attempt + 1}/{max_attempts})...")
+                _link_code = ""
+
+            try:
+                code = await _playwright_get_link_code(phone_number)
+            except Exception as e:
+                err_msg = str(e)[:300]
+                # If rate-limited, don't retry — WhatsApp blocks further attempts
+                if "too many attempts" in err_msg.lower():
+                    raise
+                if attempt < max_attempts - 1:
+                    _log_action(f"Link code attempt {attempt + 1} failed: {err_msg[:80]} — retrying...")
+                    continue
+                raise
+
+            _link_code = code
+            _link_code_pending = False   # tell frontend the code is ready NOW
+            _log_action(f"Link code ready for ...{phone_number[-4:]}: {code}")
+
+            # ── Wait for connection to establish (up to 70 seconds) ──────────
+            # The pairing code screen must stay undisturbed while the user
+            # enters the code on their phone and WhatsApp completes the handshake.
+            # _link_code_active=True keeps the poller from touching the page,
+            # so no _page_lock needed here — avoids blocking /screenshot etc.
+            connected = False
+            for _ in range(35):   # 35 × 2s = 70 seconds (codes expire in ~60s)
+                await asyncio.sleep(2)
+                try:
+                    connected = await _page.evaluate(
+                        "() => !!document.querySelector('[data-testid=\"chat-list\"]')"
+                        " || !!document.querySelector('div[data-tab=\"3\"]')"
+                    )
+                except Exception:
+                    connected = False
+                if connected:
+                    _is_connected = True
+                    try:
+                        _connected_phone = await _page.evaluate(
+                            "() => {"
+                            "  const el = document.querySelector('[data-testid=\"default-user\"]');"
+                            "  return el ? el.textContent.trim() : null;"
+                            "}"
+                        )
+                    except Exception:
+                        pass
+                    _log_action(f"Connected via link code — phone: {_connected_phone or 'unknown'}")
+                    break
+
+            if connected:
+                break
+
+            # Code expired without connection — retry if we have attempts left
+            if attempt < max_attempts - 1:
+                _log_action("Link code expired — retrying with a fresh code...")
+            else:
+                _log_action("Link code delivered but connection timed out after all attempts")
     except Exception as e:
         _link_code_error = str(e)[:300]
         _log_action(f"Link code failed: {_link_code_error[:80]}")
     finally:
         _link_code_pending = False
-        # Reset page to clean QR state for next attempt
-        try:
-            async with _page_lock:
-                await _page.goto("https://web.whatsapp.com",
-                                 wait_until="domcontentloaded", timeout=15000)
-        except Exception:
-            pass
+        _link_code_active = False
 
 
 @app.get("/link/status")
@@ -411,6 +465,18 @@ def link_status():
         "pending": _link_code_pending,
         "link_code": _link_code,
         "error": _link_code_error,
+    })
+
+
+@app.get("/link/debug")
+def link_debug():
+    """Debug info for link code flow — last screenshot, state flags, errors."""
+    return JSONResponse({
+        "screenshot_b64": _link_debug_screenshot,
+        "link_code_active": _link_code_active,
+        "link_code_pending": _link_code_pending,
+        "link_code": _link_code,
+        "link_code_error": _link_code_error,
     })
 
 
@@ -467,7 +533,12 @@ async def _playwright_get_link_code(phone_number: str) -> str:
     Returns the 8-char pairing code (e.g. 'ABCD-EFGH').
     Acquires _page_lock for its entire run — poller is blocked while we drive the page.
     """
+    global _link_debug_screenshot
     async with _page_lock:
+        _flow_start = time.monotonic()
+        def _step_elapsed() -> str:
+            return f"+{time.monotonic() - _flow_start:.1f}s"
+
         # ── Step 0: always reload WA Web for a clean QR/login page ─────────────
         # We always navigate fresh so we're never stuck on a pairing code screen,
         # tel-input form, or any other intermediate state from a previous attempt.
@@ -481,7 +552,7 @@ async def _playwright_get_link_code(phone_number: str) -> str:
                     '[data-testid="login-phone-btn"], [role="button"]',
                     timeout=30000
                 )
-                await asyncio.sleep(2)  # brief settle after element appears
+                await asyncio.sleep(1)  # brief settle after element appears
             except Exception:
                 await asyncio.sleep(10)  # fallback if selector not found
         except Exception:
@@ -512,7 +583,7 @@ async def _playwright_get_link_code(phone_number: str) -> str:
                 }
             """)
             if clicked:
-                log.info(f"[LINK] Clicked phone-number button via: {clicked}")
+                log.info(f"[LINK][{_step_elapsed()}] Clicked phone-number button via: {clicked}")
                 break
             await asyncio.sleep(1)
         else:
@@ -520,10 +591,18 @@ async def _playwright_get_link_code(phone_number: str) -> str:
 
         # ── Step 2: parse phone number into country + local digits ───────────
         country_code, local_number, country_name = _parse_phone(phone_number)
-        log.info(f"[LINK] Parsed: +{country_code} ({country_name}) local={local_number}")
+        log.info(f"[LINK][{_step_elapsed()}] Parsed: +{country_code} ({country_name}) local={local_number}")
 
         # ── Step 3: change country dropdown ──────────────────────────────
-        await asyncio.sleep(2.0)  # let the "Enter phone number" form fully render
+        # Wait for the phone number input to render instead of fixed sleep
+        try:
+            await _page.wait_for_selector(
+                'input[type="tel"], input[inputmode="tel"], input[inputmode="numeric"]',
+                timeout=5000
+            )
+            await asyncio.sleep(0.5)  # minimal settle
+        except Exception:
+            await asyncio.sleep(2.0)  # fallback if selector not found
 
         if country_name:
             # ── DOM dump for diagnostics ──────────────────────────────────────
@@ -603,7 +682,7 @@ async def _playwright_get_link_code(phone_number: str) -> str:
 
             if dropdown_opened and dropdown_opened != 'native-select':
                 log.info(f"[LINK] Country dropdown opened via: {dropdown_opened}")
-                await asyncio.sleep(1.5)  # wait for search overlay to appear
+                await asyncio.sleep(1.0)  # wait for search overlay to appear
 
                 # Save screenshot of dropdown state for debugging
                 try:
@@ -619,7 +698,7 @@ async def _playwright_get_link_code(phone_number: str) -> str:
 
                 # Type country name into search field
                 await _page.keyboard.type(country_name, delay=60)
-                await asyncio.sleep(1.2)
+                await asyncio.sleep(0.8)
 
                 # Use JS to find the first list item's coordinates, then real mouse click
                 pos = await _page.evaluate("""
@@ -645,7 +724,7 @@ async def _playwright_get_link_code(phone_number: str) -> str:
                     _country_clicked = "Enter-fallback"
                     log.info("[LINK] No list item found — pressed Enter as fallback")
 
-                await asyncio.sleep(0.8)  # let dropdown close animation finish
+                await asyncio.sleep(0.5)  # let dropdown close animation finish
 
                 # Verify the country changed
                 current_country = await _page.evaluate("""
@@ -664,9 +743,9 @@ async def _playwright_get_link_code(phone_number: str) -> str:
             await asyncio.sleep(0.5)
 
         # ── Step 4: fill the phone number ────────────────────────────────────
-        # Type the full E.164 number (+971551289700) — WA auto-detects country from +971 prefix.
-        # This bypasses country dropdown state issues entirely.
-        full_number = f"+{phone_number}" if not phone_number.startswith('+') else phone_number
+        # Type the LOCAL number only (country already set in Step 3).
+        # If country code is unknown, fall back to full E.164 with '+' prefix.
+        number_to_type = local_number if country_code else f"+{phone_number}"
         filled = False
         for sel in ['input[type="tel"]', 'input[inputmode="tel"]', 'input[inputmode="numeric"]', 'input[type="text"]']:
             inp = await _page.query_selector(sel)
@@ -675,9 +754,9 @@ async def _playwright_get_link_code(phone_number: str) -> str:
                 await _page.keyboard.press("Control+A")
                 await _page.keyboard.press("Delete")
                 await asyncio.sleep(0.3)
-                await _page.keyboard.type(full_number, delay=80)
+                await _page.keyboard.type(number_to_type, delay=80)
                 filled = True
-                log.info(f"[LINK] Entered full number via {sel}: {full_number}")
+                log.info(f"[LINK] Entered number via {sel}: {number_to_type}")
                 break
 
         if not filled:
@@ -695,11 +774,23 @@ async def _playwright_get_link_code(phone_number: str) -> str:
                 await _page.keyboard.press("Control+A")
                 await _page.keyboard.press("Delete")
                 await asyncio.sleep(0.3)
-                await _page.keyboard.type(full_number, delay=80)
-                log.info(f"[LINK] Entered full number via fallback: {full_number}")
+                await _page.keyboard.type(number_to_type, delay=80)
+                log.info(f"[LINK] Entered number via fallback: {number_to_type}")
             filled = clicked
 
         await asyncio.sleep(0.5)
+
+        # Verify what was actually entered in the input field
+        actual_value = await _page.evaluate("""
+            () => {
+                for (const sel of ['input[type="tel"]', 'input[inputmode="tel"]', 'input[inputmode="numeric"]', 'input[type="text"]']) {
+                    const inp = document.querySelector(sel);
+                    if (inp && inp.offsetParent !== null) return inp.value;
+                }
+                return 'NOT FOUND';
+            }
+        """)
+        log.info(f"[LINK] Input field verification: {actual_value}")
 
         # ── Step 5: click Next ───────────────────────────────────────────────
         await _page.evaluate("""
@@ -725,8 +816,8 @@ async def _playwright_get_link_code(phone_number: str) -> str:
                 .map(i => `${i.type}|val=${i.value}|${i.offsetWidth}x${i.offsetHeight}`)
         """)
         log.info(f"[LINK] Before Next — inputs: {_inp_vals}")
-        log.info("[LINK] Clicked Next, waiting for pairing code...")
-        await asyncio.sleep(4.0)
+        log.info(f"[LINK][{_step_elapsed()}] Clicked Next, waiting for pairing code...")
+        await asyncio.sleep(2.0)
 
         # ── Step 6: extract the pairing code ─────────────────────────────────
         for attempt in range(20):  # poll up to ~40s
@@ -736,14 +827,15 @@ async def _playwright_get_link_code(phone_number: str) -> str:
                     _buf = await _page.screenshot()
                     with open('/tmp/wa_code_page.png', 'wb') as _f:
                         _f.write(_buf)
+                    _link_debug_screenshot = base64.b64encode(_buf).decode()
                 except Exception:
                     pass
                 body_text = await _page.evaluate("() => document.body.innerText.slice(0, 800)")
-                log.info(f"[LINK][CODE-PAGE] {body_text!r}")
+                log.info(f"[LINK][{_step_elapsed()}][CODE-PAGE] {body_text!r}")
 
             code = await _page.evaluate("""
                 () => {
-                    // Try exact testids first
+                    // Strategy 1: exact testid selectors
                     for (const sel of [
                         '[data-testid="link-with-phone-number-code"]',
                         '[data-testid="phonecode-login-code"]',
@@ -757,14 +849,39 @@ async def _playwright_get_link_code(phone_number: str) -> str:
                             if (m) return m[1].toUpperCase() + '-' + m[2].toUpperCase();
                         }
                     }
-                    // WA renders each code char in its own span — find runs of single-char nodes
+
+                    // Strategy 2: regex on visible page text (catches XXXX-XXXX rendered as plain text)
+                    const bodyText = document.body.innerText || '';
+                    const codeMatch = bodyText.match(/\\b([A-Z0-9]{4})-([A-Z0-9]{4})\\b/i);
+                    if (codeMatch) return codeMatch[1].toUpperCase() + '-' + codeMatch[2].toUpperCase();
+
+                    // Strategy 3: scoped TreeWalker within likely code containers
+                    for (const containerSel of [
+                        '[data-testid*="code"]', '[data-testid*="pair"]',
+                        '[data-testid*="link-device"]', 'div[class*="code"]',
+                    ]) {
+                        const container = document.querySelector(containerSel);
+                        if (!container) continue;
+                        const cbuf = [];
+                        const cwalker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
+                        let cnode;
+                        while ((cnode = cwalker.nextNode())) {
+                            const ch = cnode.textContent.trim();
+                            if (ch.length === 1 && /[A-Z0-9\\-]/i.test(ch)) cbuf.push(ch.toUpperCase());
+                        }
+                        const cseq = cbuf.join('');
+                        const cm = cseq.match(/([A-Z0-9]{4})-?([A-Z0-9]{4})/);
+                        if (cm) return cm[1] + '-' + cm[2];
+                    }
+
+                    // Strategy 4: full-body TreeWalker (last resort)
                     const buf = [];
                     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
                     let node;
                     const check = () => {
-                        if (buf.length >= 9) {
+                        if (buf.length >= 8) {
                             const seq = buf.join('');
-                            const m = seq.match(/([A-Z0-9]{4})-([A-Z0-9]{4})/);
+                            const m = seq.match(/([A-Z0-9]{4})-?([A-Z0-9]{4})/);
                             if (m) return m[1] + '-' + m[2];
                         }
                         return null;

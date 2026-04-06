@@ -47,7 +47,7 @@ export default function CallLogPage() {
   const refresh = useCallback(async () => {
     try {
       const data = await getAllCalls();
-      setCalls(data);
+      setCalls(data.calls);
     } catch {
       // fail silently
     } finally {

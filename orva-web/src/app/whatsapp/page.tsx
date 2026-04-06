@@ -119,15 +119,17 @@ function ConnectionStatus() {
     try {
       await startLink(account, linkPhone.trim());
       // Poll for code
-      for (let i = 0; i < 30; i++) {
+      let lastCode: string | null = null;
+      for (let i = 0; i < 50; i++) {
         await new Promise((r) => setTimeout(r, 3000));
         const ls = await getLinkStatus(account);
-        if (ls.link_code) {
+        if (ls.link_code && ls.link_code !== lastCode) {
+          lastCode = ls.link_code;
           setLinkCode(ls.link_code);
-          break;
+          // Don't break — keep polling in case backend retries with a new code
         }
         if (ls.error) { setLinkError(ls.error); break; }
-        if (!ls.pending) break;
+        if (!ls.pending && !ls.link_code) break;
       }
     } catch (e) {
       setLinkError(e instanceof Error ? e.message : "Failed to start link");

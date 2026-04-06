@@ -253,6 +253,32 @@ async def export_messages(user: dict = Depends(get_current_user)):
     )
 
 
+@router.post("/send/{account}")
+async def send_message(
+    account: str,
+    body: dict,
+    user: dict = Depends(get_current_user),
+):
+    """Proxy a single message send to wa-{account}. For testing connection."""
+    url = _get_wa_url(account)
+    phone = (body.get("phone") or "").strip()
+    message = (body.get("message") or "").strip()
+    if not phone or not message:
+        raise HTTPException(400, "phone and message are required")
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                f"{url}/send/text",
+                json={"phone": phone, "message": message},
+                timeout=30,
+            )
+            return r.json()
+    except httpx.ConnectError:
+        raise HTTPException(503, "WA server not reachable")
+    except Exception as e:
+        raise HTTPException(503, f"WA server error: {str(e)[:100]}")
+
+
 @router.post("/restriction")
 async def mark_restriction(user: dict = Depends(get_current_user)):
     """Record a restriction date for cooldown."""

@@ -3,6 +3,7 @@ services:
   # --- NEW: ORVA Web App (Next.js + FastAPI) ---
 
   api:
+    platform: linux/amd64
     build:
       context: .
       dockerfile: orva_api/Dockerfile
@@ -22,6 +23,7 @@ services:
     restart: unless-stopped
 
   web:
+    platform: linux/amd64
     build:
       context: ./orva-web
     ports:
@@ -53,9 +55,11 @@ services:
     restart: unless-stopped
 
   wa-1:
+    platform: linux/amd64
     build:
       context: .
       dockerfile: whatsapp_bot/playwright_server/Dockerfile
+    shm_size: "512m"
     ports:
       - "3001:3001"
     env_file: .env
@@ -70,9 +74,11 @@ services:
     restart: unless-stopped
 
   wa-2:
+    platform: linux/amd64
     build:
       context: .
       dockerfile: whatsapp_bot/playwright_server/Dockerfile
+    shm_size: "512m"
     ports:
       - "3002:3002"
     env_file: .env
