@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ORVA -- Property Intelligence",
+  title: "ORVA \u2014 Property Intelligence",
   description: "Palm Jumeirah Real Estate Lead Management",
 };
 

@@ -69,24 +69,37 @@ function ConnectionStatus() {
   const [linkPhone, setLinkPhone] = useState("");
   const [linkCode, setLinkCode] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const failCountRef = useRef(0);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refresh = useCallback(async () => {
     try {
       const s = await getWAStatus(account);
       setStatus(s);
-    } catch { /* ignore */ }
+      failCountRef.current = 0;
+    } catch {
+      failCountRef.current += 1;
+    }
   }, [account]);
 
   useEffect(() => {
     refresh();
-    const iv = setInterval(refresh, 5000);
-    return () => clearInterval(iv);
+    const scheduleNext = () => {
+      const delay = failCountRef.current === 0 ? 5000 : Math.min(5000 * Math.pow(2, failCountRef.current), 30000);
+      intervalRef.current = setTimeout(() => {
+        refresh().then(scheduleNext);
+      }, delay);
+    };
+    scheduleNext();
+    return () => { if (intervalRef.current) clearTimeout(intervalRef.current); };
   }, [refresh]);
 
   const handleLink = async () => {
     if (!linkPhone.trim()) return;
     setLinking(true);
     setLinkCode(null);
+    setLinkError(null);
     try {
       await startLink(account, linkPhone.trim());
       // Poll for code
@@ -97,10 +110,12 @@ function ConnectionStatus() {
           setLinkCode(ls.link_code);
           break;
         }
-        if (ls.error) break;
+        if (ls.error) { setLinkError(ls.error); break; }
         if (!ls.pending) break;
       }
-    } catch { /* ignore */ }
+    } catch (e) {
+      setLinkError(e instanceof Error ? e.message : "Failed to start link");
+    }
     setLinking(false);
   };
 
@@ -117,7 +132,7 @@ function ConnectionStatus() {
           )}
           <span className="text-sm font-medium text-foreground">
             {connected
-              ? `Connected -- ${status?.phone || "Unknown"}`
+              ? `Connected \u2014 ${status?.phone || "Unknown"}`
               : "Disconnected"}
           </span>
           <button onClick={refresh} className="rounded p-1 text-muted hover:text-foreground">
@@ -177,6 +192,9 @@ function ConnectionStatus() {
               {linking ? "Linking..." : "Get Link Code"}
             </button>
           </div>
+          {linkError && (
+            <div className="mt-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">{linkError}</div>
+          )}
           {linkCode && (
             <div className="mt-3 rounded-lg border border-accent/30 bg-accent/10 p-4 text-center">
               <p className="mb-1 text-xs text-muted">Enter this code in WhatsApp &rarr; Linked Devices &rarr; Link with phone number</p>
@@ -800,7 +818,7 @@ function ActivityTab() {
 
   const refresh = useCallback(async () => {
     try {
-      const data = await (await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/whatsapp/telemetry/${account}`, {
+      const data = await (await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? ""}/api/whatsapp/telemetry/${account}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("orva_token")}` },
       })).json();
       setTelemetry(data);

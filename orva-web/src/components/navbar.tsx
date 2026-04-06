@@ -100,7 +100,7 @@ export function Navbar() {
   return (
     <>
       {/* Desktop navbar */}
-      <nav className="hidden md:flex items-center gap-1 border-b border-border bg-card px-4 py-2">
+      <nav className="hidden md:flex items-center gap-1 border-b border-border bg-card px-4 py-2 relative z-50">
         <Link href="/" className="mr-4">
           <OrvaLogo size="sm" />
         </Link>

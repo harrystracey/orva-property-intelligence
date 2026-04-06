@@ -62,7 +62,7 @@ export default function BayutPage() {
     setRefreshing(true);
     setRefreshMsg("");
     try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
       const token = localStorage.getItem("orva_token");
       const res = await fetch(`${API_BASE}/api/bayut/refresh`, {
         method: "POST",
