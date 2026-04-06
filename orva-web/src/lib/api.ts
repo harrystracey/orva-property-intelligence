@@ -372,10 +372,11 @@ export async function getWAStatus(account: string): Promise<WAStatus> {
   return request<WAStatus>(`/api/whatsapp/status/${account}`);
 }
 
-export async function startLink(account: string, phone: string): Promise<void> {
+export async function startLink(account: string, phone: string, signal?: AbortSignal): Promise<void> {
   await request(`/api/whatsapp/link/start/${account}`, {
     method: "POST",
     body: JSON.stringify({ phone_number: phone }),
+    signal,
   });
 }
 

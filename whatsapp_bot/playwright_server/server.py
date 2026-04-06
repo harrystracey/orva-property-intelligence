@@ -84,6 +84,7 @@ _link_code: str = ""
 _link_code_error: str = ""
 _link_code_pending: bool = False
 _link_code_active: bool = False    # True while pairing session is active — poller must not touch the page
+_link_code_status: str = ""        # progress message for frontend (e.g. "Opening WhatsApp Web...")
 _link_debug_screenshot: str | None = None  # base64 PNG of last debug screenshot from link flow
 
 
@@ -366,7 +367,7 @@ async def link_start(body: dict):
     Returns {"status": "started"} immediately.
     Poll GET /link/status for the result.
     """
-    global _link_code, _link_code_error, _link_code_pending
+    global _link_code, _link_code_error, _link_code_pending, _link_code_status
     if not _page:
         return JSONResponse({"error": "Playwright not ready"}, status_code=503)
     if _is_connected:
@@ -381,6 +382,7 @@ async def link_start(body: dict):
 
     _link_code = ""
     _link_code_error = ""
+    _link_code_status = "Starting..."
     _link_code_pending = True
     asyncio.create_task(_run_link_code_flow(phone_number))
     return JSONResponse({"status": "started"})
@@ -388,8 +390,9 @@ async def link_start(body: dict):
 
 async def _run_link_code_flow(phone_number: str) -> None:
     global _link_code, _link_code_error, _link_code_pending
-    global _link_code_active, _is_connected, _connected_phone
+    global _link_code_active, _is_connected, _connected_phone, _link_code_status
     _link_code_active = True
+    _link_code_status = "Initializing..."
     max_attempts = 2
     try:
         for attempt in range(max_attempts):
@@ -411,6 +414,7 @@ async def _run_link_code_flow(phone_number: str) -> None:
 
             _link_code = code
             _link_code_pending = False   # tell frontend the code is ready NOW
+            _link_code_status = "Code ready — enter it on your phone"
             _log_action(f"Link code ready for ...{phone_number[-4:]}: {code}")
 
             # ── Wait for connection to establish (up to 70 seconds) ──────────
@@ -452,6 +456,7 @@ async def _run_link_code_flow(phone_number: str) -> None:
                 _log_action("Link code delivered but connection timed out after all attempts")
     except Exception as e:
         _link_code_error = str(e)[:300]
+        _link_code_status = "Failed"
         _log_action(f"Link code failed: {_link_code_error[:80]}")
     finally:
         _link_code_pending = False
@@ -465,6 +470,7 @@ def link_status():
         "pending": _link_code_pending,
         "link_code": _link_code,
         "error": _link_code_error,
+        "status": _link_code_status,
     })
 
 
@@ -533,7 +539,7 @@ async def _playwright_get_link_code(phone_number: str) -> str:
     Returns the 8-char pairing code (e.g. 'ABCD-EFGH').
     Acquires _page_lock for its entire run — poller is blocked while we drive the page.
     """
-    global _link_debug_screenshot
+    global _link_debug_screenshot, _link_code_status
     async with _page_lock:
         _flow_start = time.monotonic()
         def _step_elapsed() -> str:
@@ -542,6 +548,7 @@ async def _playwright_get_link_code(phone_number: str) -> str:
         # ── Step 0: always reload WA Web for a clean QR/login page ─────────────
         # We always navigate fresh so we're never stuck on a pairing code screen,
         # tel-input form, or any other intermediate state from a previous attempt.
+        _link_code_status = "Opening WhatsApp Web..."
         try:
             await _page.goto("https://web.whatsapp.com",
                              wait_until="domcontentloaded", timeout=30000)
@@ -559,6 +566,7 @@ async def _playwright_get_link_code(phone_number: str) -> str:
             pass
 
         # ── Step 1: click "Link with phone number" ───────────────────────────
+        _link_code_status = "Finding phone link button..."
         for attempt in range(20):
             clicked = await _page.evaluate("""
                 () => {
@@ -594,6 +602,7 @@ async def _playwright_get_link_code(phone_number: str) -> str:
         log.info(f"[LINK][{_step_elapsed()}] Parsed: +{country_code} ({country_name}) local={local_number}")
 
         # ── Step 3: change country dropdown ──────────────────────────────
+        _link_code_status = "Setting country code..."
         # Wait for the phone number input to render instead of fixed sleep
         try:
             await _page.wait_for_selector(
@@ -743,6 +752,7 @@ async def _playwright_get_link_code(phone_number: str) -> str:
             await asyncio.sleep(0.5)
 
         # ── Step 4: fill the phone number ────────────────────────────────────
+        _link_code_status = "Entering phone number..."
         # Type the LOCAL number only (country already set in Step 3).
         # If country code is unknown, fall back to full E.164 with '+' prefix.
         number_to_type = local_number if country_code else f"+{phone_number}"
@@ -793,6 +803,7 @@ async def _playwright_get_link_code(phone_number: str) -> str:
         log.info(f"[LINK] Input field verification: {actual_value}")
 
         # ── Step 5: click Next ───────────────────────────────────────────────
+        _link_code_status = "Submitting phone number..."
         await _page.evaluate("""
             () => {
                 const btns = document.querySelectorAll('button, [role="button"]');
@@ -820,6 +831,7 @@ async def _playwright_get_link_code(phone_number: str) -> str:
         await asyncio.sleep(2.0)
 
         # ── Step 6: extract the pairing code ─────────────────────────────────
+        _link_code_status = "Waiting for pairing code..."
         for attempt in range(20):  # poll up to ~40s
             # Screenshot + body text on first attempt for diagnostics
             if attempt == 0:

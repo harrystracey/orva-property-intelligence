@@ -70,6 +70,7 @@ function ConnectionStatus() {
   const [linkCode, setLinkCode] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
+  const [linkProgress, setLinkProgress] = useState<string | null>(null);
   const [linkTimer, setLinkTimer] = useState(0);
   const failCountRef = useRef(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -116,25 +117,46 @@ function ConnectionStatus() {
     setLinking(true);
     setLinkCode(null);
     setLinkError(null);
+    setLinkProgress(null);
     try {
-      await startLink(account, linkPhone.trim());
-      // Poll for code
+      // Start with a 15-second timeout so we don't hang forever
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      try {
+        await startLink(account, linkPhone.trim(), controller.signal);
+      } finally {
+        clearTimeout(timeout);
+      }
+      // Poll for code — backend takes ~30-40s through the Playwright flow
       let lastCode: string | null = null;
-      for (let i = 0; i < 50; i++) {
-        await new Promise((r) => setTimeout(r, 3000));
-        const ls = await getLinkStatus(account);
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        let ls: { pending: boolean; link_code: string | null; error: string | null; status?: string };
+        try {
+          ls = await getLinkStatus(account);
+        } catch {
+          continue; // transient network error — keep polling
+        }
+        // Show backend progress to user
+        if (ls.status) setLinkProgress(ls.status);
         if (ls.link_code && ls.link_code !== lastCode) {
           lastCode = ls.link_code;
           setLinkCode(ls.link_code);
+          setLinkProgress("Code ready — enter it on your phone");
           // Don't break — keep polling in case backend retries with a new code
         }
-        if (ls.error) { setLinkError(ls.error); break; }
+        if (ls.error) { setLinkError(ls.error); setLinkProgress(null); break; }
         if (!ls.pending && !ls.link_code) break;
       }
     } catch (e) {
-      setLinkError(e instanceof Error ? e.message : "Failed to start link");
+      if (e instanceof DOMException && e.name === "AbortError") {
+        setLinkError("Request timed out. Is the WhatsApp server running?");
+      } else {
+        setLinkError(e instanceof Error ? e.message : "Failed to start link");
+      }
     }
     setLinking(false);
+    setLinkProgress(null);
   };
 
   const connected = status?.connected ?? false;
@@ -212,6 +234,11 @@ function ConnectionStatus() {
           </div>
           {linkError && (
             <div className="mt-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">{linkError}</div>
+          )}
+          {linking && linkProgress && !linkError && (
+            <div className="mt-2 rounded-lg border border-accent/30 bg-accent/5 px-3 py-2 text-xs text-muted">
+              {linkProgress}
+            </div>
           )}
           {linkCode && (
             <div className="mt-3 rounded-lg border border-accent/30 bg-accent/10 p-4 text-center">
