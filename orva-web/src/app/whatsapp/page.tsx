@@ -163,8 +163,8 @@ function ConnectionStatus() {
         </div>
       </div>
 
-      {/* QR / Link code when disconnected */}
-      {!connected && (
+      {/* QR / Link code when disconnected or connected but phone unknown */}
+      {(!connected || !status?.phone) && (
         <div className="mt-3 rounded-lg border border-border bg-background p-3">
           {status?.qr_b64 && (
             <div className="mb-3 flex justify-center">
