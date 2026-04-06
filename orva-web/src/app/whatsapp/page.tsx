@@ -70,6 +70,7 @@ function ConnectionStatus() {
   const [linkCode, setLinkCode] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
+  const [linkTimer, setLinkTimer] = useState(0);
   const failCountRef = useRef(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -78,10 +79,25 @@ function ConnectionStatus() {
       const s = await getWAStatus(account);
       setStatus(s);
       failCountRef.current = 0;
+      // Check for any pending/ready link code (survives page refresh)
+      if (!s.connected) {
+        try {
+          const ls = await getLinkStatus(account);
+          if (ls.link_code) setLinkCode(ls.link_code);
+          if (ls.error && ls.error.length > 0) setLinkError(ls.error);
+        } catch { /* ignore */ }
+      }
     } catch {
       failCountRef.current += 1;
     }
   }, [account]);
+
+  // Timer that counts up while linking is in progress
+  useEffect(() => {
+    if (!linking) { setLinkTimer(0); return; }
+    const iv = setInterval(() => setLinkTimer(t => t + 1), 1000);
+    return () => clearInterval(iv);
+  }, [linking]);
 
   useEffect(() => {
     refresh();
@@ -189,7 +205,7 @@ function ConnectionStatus() {
               className="flex items-center justify-center gap-1.5 rounded-lg bg-accent/15 px-4 py-2 text-sm font-medium text-accent hover:bg-accent/25 disabled:opacity-50"
             >
               <Link2 size={14} />
-              {linking ? "Linking..." : "Get Link Code"}
+              {linking ? `Linking... (${linkTimer}s)` : "Get Link Code"}
             </button>
           </div>
           {linkError && (
@@ -199,6 +215,7 @@ function ConnectionStatus() {
             <div className="mt-3 rounded-lg border border-accent/30 bg-accent/10 p-4 text-center">
               <p className="mb-1 text-xs text-muted">Enter this code in WhatsApp &rarr; Linked Devices &rarr; Link with phone number</p>
               <p className="font-mono text-2xl font-bold tracking-[0.3em] text-accent">{linkCode}</p>
+              <p className="mt-1 text-xs text-muted">Code expires in ~60 seconds</p>
             </div>
           )}
         </div>
