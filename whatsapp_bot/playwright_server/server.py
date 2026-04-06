@@ -395,6 +395,13 @@ async def _run_link_code_flow(phone_number: str) -> None:
         _log_action(f"Link code failed: {_link_code_error[:80]}")
     finally:
         _link_code_pending = False
+        # Reset page to clean QR state for next attempt
+        try:
+            async with _page_lock:
+                await _page.goto("https://web.whatsapp.com",
+                                 wait_until="domcontentloaded", timeout=15000)
+        except Exception:
+            pass
 
 
 @app.get("/link/status")
@@ -467,12 +474,21 @@ async def _playwright_get_link_code(phone_number: str) -> str:
         try:
             await _page.goto("https://web.whatsapp.com",
                              wait_until="domcontentloaded", timeout=30000)
-            await asyncio.sleep(5)  # give WA Web time to render the login screen
+            # Wait for WA Web to actually render (QR canvas or phone-link button)
+            try:
+                await _page.wait_for_selector(
+                    'canvas, [data-testid="link-device-phone-num-btn-side"], '
+                    '[data-testid="login-phone-btn"], [role="button"]',
+                    timeout=30000
+                )
+                await asyncio.sleep(2)  # brief settle after element appears
+            except Exception:
+                await asyncio.sleep(10)  # fallback if selector not found
         except Exception:
             pass
 
         # ── Step 1: click "Link with phone number" ───────────────────────────
-        for attempt in range(10):
+        for attempt in range(20):
             clicked = await _page.evaluate("""
                 () => {
                     const testids = [
