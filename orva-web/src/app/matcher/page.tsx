@@ -4,8 +4,8 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { LoginForm } from "@/components/login-form";
-import { matchListing, MatchResult } from "@/lib/api";
-import { Crosshair, Search, Phone, User } from "lucide-react";
+import { matchListing, scrapeAndMatch, MatchResult, ScrapedListing } from "@/lib/api";
+import { Crosshair, Search, Phone, User, Link2, Loader2 } from "lucide-react";
 
 function confidenceBadge(c: number) {
   const pct = Math.round(c * 100);
@@ -27,7 +27,9 @@ function MatcherForm() {
   const [bedrooms, setBedrooms] = useState(searchParams.get("beds") || "");
   const [url, setUrl] = useState("");
   const [results, setResults] = useState<MatchResult[]>([]);
+  const [scrapedListing, setScrapedListing] = useState<ScrapedListing | null>(null);
   const [loading, setLoading] = useState(false);
+  const [scraping, setScraping] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState("");
 
@@ -37,6 +39,31 @@ function MatcherForm() {
       handleMatch();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleScrapeAndMatch = async () => {
+    const u = url.trim();
+    if (!u) return;
+    if (!u.includes("bayut.com") && !u.includes("propertyfinder")) {
+      setError("Only Bayut and PropertyFinder URLs are supported");
+      return;
+    }
+    setError("");
+    setScraping(true);
+    setSearched(false);
+    setScrapedListing(null);
+    try {
+      const res = await scrapeAndMatch(u);
+      setScrapedListing(res.listing);
+      setResults(res.matches);
+      // Auto-fill the manual fields from scraped data
+      if (res.listing.building) setBuilding(res.listing.building);
+      if (res.listing.bedrooms != null) setBedrooms(String(res.listing.bedrooms === 0 ? "Studio" : res.listing.bedrooms));
+      if (res.listing.size_sqft) setSize(String(Math.round(res.listing.size_sqft)));
+      setSearched(true);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Scrape failed");
+    } finally { setScraping(false); }
+  };
 
   const handleMatch = async () => {
     if (!building.trim()) { setError("Building name is required"); return; }
@@ -49,7 +76,6 @@ function MatcherForm() {
         unit_number: unit.trim() || undefined,
         size_sqft: size ? Number(size) : undefined,
         bedrooms: bedrooms || undefined,
-        listing_url: url.trim() || undefined,
       });
       setResults(res.results);
       setSearched(true);
@@ -60,53 +86,83 @@ function MatcherForm() {
 
   return (
     <>
-      {/* Input form */}
-      <div className="rounded-xl border border-border bg-card p-4">
-        <p className="mb-3 text-xs text-muted">Enter listing details to find the owner in the database</p>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <label className="mb-1 block text-xs text-muted">Building *</label>
-            <input type="text" placeholder="e.g. Shoreline 5" value={building}
-              onChange={e => setBuilding(e.target.value)} onKeyDown={e => e.key === "Enter" && handleMatch()}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent" />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-muted">Unit Number</label>
-            <input type="text" placeholder="e.g. 204" value={unit}
-              onChange={e => setUnit(e.target.value)} onKeyDown={e => e.key === "Enter" && handleMatch()}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent" />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-muted">Size (sqft)</label>
-            <input type="number" placeholder="e.g. 1250" value={size} onChange={e => setSize(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent" />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-muted">Bedrooms</label>
-            <select value={bedrooms} onChange={e => setBedrooms(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent">
-              <option value="">Any</option>
-              <option value="Studio">Studio</option>
-              <option value="1">1 BR</option>
-              <option value="2">2 BR</option>
-              <option value="3">3 BR</option>
-              <option value="4">4 BR</option>
-              <option value="5">5 BR</option>
-            </select>
-          </div>
-          <div className="md:col-span-2">
-            <label className="mb-1 block text-xs text-muted">Listing URL (optional)</label>
-            <input type="text" placeholder="https://bayut.com/..." value={url} onChange={e => setUrl(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent" />
-          </div>
+      {/* URL Paste — Primary Action */}
+      <div className="rounded-xl border-2 border-accent/30 bg-accent/5 p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Link2 size={16} className="text-accent" />
+          <span className="text-sm font-medium text-foreground">Paste listing URL</span>
         </div>
-        {error && <p className="mt-2 text-xs text-danger">{error}</p>}
-        <button onClick={handleMatch} disabled={loading}
-          className="mt-4 flex items-center gap-2 rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50">
-          <Search size={14} />
-          {loading ? "Matching..." : "Find Owner"}
-        </button>
+        <div className="flex gap-2">
+          <input type="text" placeholder="https://www.bayut.com/property/details-... or propertyfinder.ae/..."
+            value={url} onChange={e => setUrl(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleScrapeAndMatch()}
+            className="flex-1 rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-accent" />
+          <button onClick={handleScrapeAndMatch} disabled={scraping || !url.trim()}
+            className="flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-40">
+            {scraping ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+            {scraping ? "Scraping..." : "Find Owner"}
+          </button>
+        </div>
+        {scrapedListing && (
+          <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted">
+            <span className="rounded bg-background px-2 py-0.5">{scrapedListing.portal}</span>
+            {scrapedListing.building && <span className="rounded bg-background px-2 py-0.5">{scrapedListing.building}</span>}
+            {scrapedListing.bedrooms != null && <span className="rounded bg-background px-2 py-0.5">{scrapedListing.bedrooms === 0 ? "Studio" : `${scrapedListing.bedrooms} BR`}</span>}
+            {scrapedListing.size_sqft && <span className="rounded bg-background px-2 py-0.5">{Math.round(scrapedListing.size_sqft).toLocaleString()} sqft</span>}
+            {scrapedListing.price && <span className="rounded bg-background px-2 py-0.5">AED {scrapedListing.price.toLocaleString()}</span>}
+            {scrapedListing.listing_type && <span className="rounded bg-background px-2 py-0.5">{scrapedListing.listing_type}</span>}
+            {scrapedListing.view && <span className="rounded bg-background px-2 py-0.5">{scrapedListing.view}</span>}
+          </div>
+        )}
       </div>
+
+      {/* Manual Entry — Fallback */}
+      <details className="rounded-xl border border-border bg-card">
+        <summary className="cursor-pointer px-4 py-3 text-xs text-muted hover:text-foreground">
+          Or enter details manually
+        </summary>
+        <div className="px-4 pb-4">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <label className="mb-1 block text-xs text-muted">Building *</label>
+              <input type="text" placeholder="e.g. Shoreline 5" value={building}
+                onChange={e => setBuilding(e.target.value)} onKeyDown={e => e.key === "Enter" && handleMatch()}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted">Unit Number</label>
+              <input type="text" placeholder="e.g. 204" value={unit}
+                onChange={e => setUnit(e.target.value)} onKeyDown={e => e.key === "Enter" && handleMatch()}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted">Size (sqft)</label>
+              <input type="number" placeholder="e.g. 1250" value={size} onChange={e => setSize(e.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-muted">Bedrooms</label>
+              <select value={bedrooms} onChange={e => setBedrooms(e.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-accent">
+                <option value="">Any</option>
+                <option value="Studio">Studio</option>
+                <option value="1">1 BR</option>
+                <option value="2">2 BR</option>
+                <option value="3">3 BR</option>
+                <option value="4">4 BR</option>
+                <option value="5">5 BR</option>
+              </select>
+            </div>
+          </div>
+          <button onClick={handleMatch} disabled={loading}
+            className="mt-3 flex items-center gap-2 rounded-lg bg-accent px-5 py-2 text-sm font-medium text-white hover:bg-accent/90 disabled:opacity-50">
+            <Search size={14} />
+            {loading ? "Matching..." : "Find Owner"}
+          </button>
+        </div>
+      </details>
+
+      {error && <p className="text-xs text-danger px-1">{error}</p>}
 
       {/* Results */}
       {searched && (

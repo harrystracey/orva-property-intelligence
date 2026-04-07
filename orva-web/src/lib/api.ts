@@ -571,3 +571,73 @@ export interface HealthResponse {
 export async function getHealth(): Promise<HealthResponse> {
   return request<HealthResponse>("/api/health");
 }
+
+// --- Listing Matcher ---
+
+export interface ScrapedListing {
+  portal: string;
+  building: string | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  size_sqft: number | null;
+  price: number | null;
+  listing_type: string | null;
+  furnished: boolean | null;
+  view: string | null;
+  date_posted: string | null;
+  permit_number: string | null;
+  url: string | null;
+  error?: string;
+}
+
+export interface MatchResult {
+  building: string;
+  unit: string;
+  size_sqft: number | null;
+  beds: string | null;
+  owner_name: string;
+  phone: string;
+  phone_display: string;
+  email: string;
+  source_file: string;
+  transaction_date: string;
+  transaction_value: number | null;
+  confidence: number;
+  match_type: string;
+}
+
+export interface ScrapeAndMatchResponse {
+  listing: ScrapedListing;
+  matches: MatchResult[];
+  count: number;
+}
+
+export async function scrapeListingUrl(url: string): Promise<ScrapedListing> {
+  return request<ScrapedListing>("/api/matcher/scrape-url", {
+    method: "POST",
+    body: JSON.stringify({ url }),
+  });
+}
+
+export async function scrapeAndMatch(url: string): Promise<ScrapeAndMatchResponse> {
+  return request<ScrapeAndMatchResponse>("/api/matcher/scrape-and-match", {
+    method: "POST",
+    body: JSON.stringify({ url }),
+  });
+}
+
+export async function matchListing(data: {
+  building_name: string;
+  unit_number?: string;
+  size_sqft?: number;
+  bedrooms?: string;
+}): Promise<{ results: MatchResult[]; count: number }> {
+  return request("/api/matcher/match", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getMatcherBuildings(): Promise<{ buildings: string[] }> {
+  return request("/api/matcher/buildings");
+}

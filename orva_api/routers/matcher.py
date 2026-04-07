@@ -50,6 +50,68 @@ def match_listing(
     return {"results": results, "count": len(results)}
 
 
+@router.post("/scrape-url")
+def scrape_url(
+    body: dict,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Scrape a Bayut or PropertyFinder listing URL and return structured data.
+    Body: { "url": "https://www.bayut.com/property/details-12345.html" }
+    Optionally auto-matches if auto_match=true: { "url": "...", "auto_match": true }
+    """
+    url = body.get("url", "").strip()
+    if not url:
+        raise HTTPException(400, "url is required")
+
+    from listing_matcher.url_scraper import scrape_listing_url
+    result = scrape_listing_url(url)
+
+    if result.get("error"):
+        raise HTTPException(400, result["error"])
+
+    return result
+
+
+@router.post("/scrape-and-match")
+def scrape_and_match(
+    body: dict,
+    store: DataStore = Depends(get_data_store),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Scrape a listing URL, then auto-match against lead database.
+    Body: { "url": "https://www.bayut.com/property/details-12345.html" }
+    Returns: { listing: {...}, matches: [...], count: N }
+    """
+    url = body.get("url", "").strip()
+    if not url:
+        raise HTTPException(400, "url is required")
+
+    if not store.is_loaded or store.leads_df.empty:
+        raise HTTPException(503, "Data not loaded")
+
+    from listing_matcher.url_scraper import scrape_listing_url
+    from listing_matcher.matcher import match_listing as _match
+
+    listing = await scrape_listing_url(url)
+    if listing.get("error"):
+        raise HTTPException(400, listing["error"])
+
+    # Build match input from scraped data
+    match_input = {
+        "building_name": listing.get("building"),
+        "bedrooms": str(listing["bedrooms"]) if listing.get("bedrooms") is not None else None,
+        "size_sqft": listing.get("size_sqft"),
+        "listing_url": url,
+    }
+
+    df = store.leads_df.rename(columns=_TO_MATCHER_COLS)
+    matches = _match(match_input, df)
+
+    return {"listing": listing, "matches": matches, "count": len(matches)}
+
+
 @router.get("/buildings")
 def get_buildings(
     store: DataStore = Depends(get_data_store),
