@@ -20,6 +20,7 @@ services:
       - ./client_data:/app/client_data
       - ./chat_history:/app/chat_history
       - ./whatsapp_bot:/app/whatsapp_bot
+      - "./Master reference datasets:/app/Master reference datasets"
     restart: unless-stopped
 
   web:
@@ -57,37 +58,27 @@ services:
   wa-1:
     platform: linux/amd64
     build:
-      context: .
-      dockerfile: whatsapp_bot/playwright_server/Dockerfile
-    shm_size: "512m"
+      context: ./whatsapp_bot/baileys_server
     ports:
       - "3001:3001"
     env_file: .env
     environment:
       WA_PORT: "3001"
-      WA_PROFILE: "profile1"
-      WA_ACCOUNT: "1"
-      WA_DATA_DIR: "/app/data"
+      WA_AUTH_DIR: "/app/auth"
     volumes:
-      - ./data:/app/data
-      - ./whatsapp_bot/playwright_server/chrome_profile:/app/chrome_profile
+      - ./whatsapp_bot/baileys_server/auth1:/app/auth
     restart: unless-stopped
 
   wa-2:
     platform: linux/amd64
     build:
-      context: .
-      dockerfile: whatsapp_bot/playwright_server/Dockerfile
-    shm_size: "512m"
+      context: ./whatsapp_bot/baileys_server
     ports:
       - "3002:3002"
     env_file: .env
     environment:
       WA_PORT: "3002"
-      WA_PROFILE: "profile2"
-      WA_ACCOUNT: "2"
-      WA_DATA_DIR: "/app/data"
+      WA_AUTH_DIR: "/app/auth"
     volumes:
-      - ./data:/app/data
-      - ./whatsapp_bot/playwright_server/chrome_profile:/app/chrome_profile
+      - ./whatsapp_bot/baileys_server/auth2:/app/auth
     restart: unless-stopped
