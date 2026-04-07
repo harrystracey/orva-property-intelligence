@@ -20,67 +20,103 @@ from typing import Optional, Dict, List, Tuple
 
 
 RENTAL_DATA_PATH = Path('scraped_data/palm_jumeirah_rentals.csv')
+REIDIN_RENTALS_PARQUET = Path('data/reidin_rentals.parquet')
+REIDIN_RENTALS_CSV = Path('data/reidin_rentals.csv')
 
 
 # =============================================================================
 # DATA LOADING
 # =============================================================================
 
+def _clean_bedrooms_numeric(val):
+    """Studio -> 0, parse numbers from strings like '3 B/R' or '2'."""
+    if pd.isna(val):
+        return None
+    s = str(val).strip().lower()
+    if 'studio' in s or s == 's' or s == '0':
+        return 0
+    match = re.search(r'(\d+)', s)
+    return int(match.group(1)) if match else None
+
+
 def load_rental_data() -> pd.DataFrame:
     """
-    Load and clean rental transaction data from the scraped CSV.
-    
+    Load and clean rental data from ALL sources (PropertyMonitor + Reidin).
+
+    Sources:
+      1. scraped_data/palm_jumeirah_rentals.csv  (PropertyMonitor Ejari)
+      2. data/reidin_rentals.parquet             (Reidin DLD)
+
     Returns:
-        DataFrame with normalized rental data. Empty DataFrame if file doesn't exist.
+        Unified DataFrame. Empty DataFrame if no files exist.
     """
-    if not RENTAL_DATA_PATH.exists():
-        print("[rental_processor] No rental data file found. Run rental_scraper.py first.")
+    frames = []
+
+    # Source 1: PropertyMonitor Ejari
+    if RENTAL_DATA_PATH.exists():
+        try:
+            pm = pd.read_csv(RENTAL_DATA_PATH, encoding='utf-8', low_memory=False)
+            if not pm.empty:
+                pm['_source'] = 'propertymonitor'
+                frames.append(pm)
+                print(f"[rental_processor] PM: {len(pm):,} rows")
+        except Exception as e:
+            print(f"[rental_processor] Error loading PM: {e}")
+
+    # Source 2: Reidin DLD
+    for rpath in [REIDIN_RENTALS_PARQUET, REIDIN_RENTALS_CSV]:
+        if rpath.exists():
+            try:
+                rdf = pd.read_parquet(rpath) if rpath.suffix == '.parquet' else pd.read_csv(rpath)
+                if not rdf.empty:
+                    if 'bedrooms' in rdf.columns:
+                        rdf['bedrooms'] = rdf['bedrooms'].apply(
+                            lambda v: 'Studio' if v == 0 else (str(int(v)) if pd.notna(v) else None)
+                        )
+                    rdf['_source'] = 'reidin'
+                    frames.append(rdf)
+                    print(f"[rental_processor] Reidin: {len(rdf):,} rows")
+            except Exception as e:
+                print(f"[rental_processor] Error loading Reidin: {e}")
+            break
+
+    if not frames:
+        print("[rental_processor] No rental data files found.")
         return pd.DataFrame()
-    
-    try:
-        df = pd.read_csv(RENTAL_DATA_PATH, encoding='utf-8', low_memory=False)
-        
-        if df.empty:
-            return pd.DataFrame()
-        
-        # Parse dates
-        df['contract_start'] = pd.to_datetime(df['contract_start'], errors='coerce')
-        df['contract_end'] = pd.to_datetime(df['contract_end'], errors='coerce')
-        if 'next_contract_date' not in df.columns:
-            df['next_contract_date'] = pd.NaT
-        else:
-            df['next_contract_date'] = pd.to_datetime(df['next_contract_date'], errors='coerce')
-        
-        # Calculate contract duration in months
-        df['contract_months'] = ((df['contract_end'] - df['contract_start']).dt.days / 30.44).round(0)
-        
-        # Calculate rental yield components
+
+    df = pd.concat(frames, ignore_index=True)
+
+    # Parse dates
+    df['contract_start'] = pd.to_datetime(df['contract_start'], errors='coerce')
+    df['contract_end'] = pd.to_datetime(df['contract_end'], errors='coerce')
+    if 'next_contract_date' not in df.columns:
+        df['next_contract_date'] = pd.NaT
+    else:
+        df['next_contract_date'] = pd.to_datetime(df['next_contract_date'], errors='coerce')
+
+    # Dedup true duplicates (prefer PM rows — richer data)
+    if '_source' in df.columns and len(frames) > 1:
+        source_priority = {'propertymonitor': 0, 'reidin': 1}
+        df['_priority'] = df['_source'].map(source_priority).fillna(2)
+        df = (
+            df.sort_values('_priority')
+            .drop_duplicates(subset=['building_name', 'unit_number', 'contract_start', 'contract_end'], keep='first')
+            .drop(columns=['_priority'])
+            .reset_index(drop=True)
+        )
+
+    # Derived fields
+    df['contract_months'] = ((df['contract_end'] - df['contract_start']).dt.days / 30.44).round(0)
+    if 'annualized_rent' in df.columns and 'size_sqft' in df.columns:
         df['annual_rent_psf'] = df['annualized_rent'] / df['size_sqft'].replace(0, float('nan'))
-        
-        # Clean bedroom field (Studio -> 0, parse numbers)
-        def clean_bed(val):
-            if pd.isna(val):
-                return None
-            s = str(val).strip().lower()
-            if 'studio' in s or s == 's':
-                return 0
-            match = re.search(r'(\d+)', s)
-            return int(match.group(1)) if match else None
-        
-        df['bedrooms_numeric'] = df['bedrooms'].apply(clean_bed)
-        
-        print(f"[rental_processor] Loaded {len(df):,} rental records")
-        print(f"  Date range: {df['contract_start'].min()} to {df['contract_end'].max()}")
-        print(f"  Unique buildings: {df['building_name'].nunique()}")
-        print(f"  Active contracts: {(df['contract_end'] > datetime.now()).sum()}")
-        
-        return df
-        
-    except Exception as e:
-        print(f"[rental_processor] Error loading rental data: {e}")
-        import traceback
-        traceback.print_exc()
-        return pd.DataFrame()
+    df['bedrooms_numeric'] = df['bedrooms'].apply(_clean_bedrooms_numeric)
+
+    print(f"[rental_processor] Total: {len(df):,} rental records")
+    print(f"  Date range: {df['contract_start'].min()} to {df['contract_end'].max()}")
+    print(f"  Unique buildings: {df['building_name'].nunique()}")
+    print(f"  Active contracts: {(df['contract_end'] > datetime.now()).sum()}")
+
+    return df
 
 
 # =============================================================================

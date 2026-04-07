@@ -2,7 +2,7 @@
  * API client for ORVA FastAPI backend.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -94,6 +94,9 @@ export interface LeadRecord {
   transaction_value: number | null;
   bedroom_method: string | null;
   bedroom_confidence: string | null;
+  rental_status: string | null;
+  lease_end: string | null;
+  annual_rent: number | null;
 }
 
 export interface LeadSearchResponse {
@@ -273,20 +276,8 @@ export async function deleteReminder(reminderId: string): Promise<void> {
 }
 
 // Call Log
-export interface CallLogResponse {
-  calls: CallRecord[];
-  total: number;
-  page: number;
-  page_size: number;
-}
-
-export async function getAllCalls(params: { page?: number; page_size?: number; search?: string; outcome?: string } = {}): Promise<CallLogResponse> {
-  const p = new URLSearchParams();
-  if (params.page) p.set("page", String(params.page));
-  if (params.page_size) p.set("page_size", String(params.page_size));
-  if (params.search) p.set("search", params.search);
-  if (params.outcome) p.set("outcome", params.outcome);
-  return request<CallLogResponse>(`/api/clients/calls/all?${p}`);
+export async function getAllCalls(): Promise<CallRecord[]> {
+  return request<CallRecord[]>("/api/clients/calls/all");
 }
 
 export async function logCall(
@@ -372,11 +363,10 @@ export async function getWAStatus(account: string): Promise<WAStatus> {
   return request<WAStatus>(`/api/whatsapp/status/${account}`);
 }
 
-export async function startLink(account: string, phone: string, signal?: AbortSignal): Promise<void> {
+export async function startLink(account: string, phone: string): Promise<void> {
   await request(`/api/whatsapp/link/start/${account}`, {
     method: "POST",
     body: JSON.stringify({ phone_number: phone }),
-    signal,
   });
 }
 
@@ -436,6 +426,139 @@ export async function markRestriction(): Promise<void> {
   await request("/api/whatsapp/restriction", { method: "POST" });
 }
 
+// --- Chat (HLM) ---
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ChatResponse {
+  response: string;
+  tool_calls: number;
+}
+
+export async function sendChatMessage(
+  message: string,
+  history: ChatMessage[] = []
+): Promise<ChatResponse> {
+  return request<ChatResponse>("/api/chat", {
+    method: "POST",
+    body: JSON.stringify({ message, history }),
+  });
+}
+
+// --- Reidin ---
+
+export interface ReidinFileInfo {
+  exists: boolean;
+  rows: number;
+  buildings: number;
+  last_modified: string | null;
+}
+
+export interface ReidinStatus {
+  sales: ReidinFileInfo;
+  rentals: ReidinFileInfo;
+}
+
+export interface ReidinUploadResult {
+  rows_in: number;
+  rows_out: number;
+  buildings: number;
+  output_path: string | null;
+  warnings: string[];
+}
+
+export async function getReidinStatus(): Promise<ReidinStatus> {
+  return request<ReidinStatus>("/api/reidin/status");
+}
+
+export async function uploadReidinCSV(
+  file: File,
+  dataType: "sales" | "rentals"
+): Promise<ReidinUploadResult> {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("data_type", dataType);
+
+  const res = await fetch(`${API_BASE}/api/reidin/upload`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+
+  if (res.status === 401) {
+    clearToken();
+    window.location.reload();
+    throw new Error("Unauthorized");
+  }
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Upload failed: ${body}`);
+  }
+  return res.json();
+}
+
+// --- Vacancy Intelligence ---
+
+export interface ExpiringUnit {
+  building_name: string;
+  unit_number: string;
+  bedrooms: string;
+  floor: string;
+  view: string;
+  size_sqft: number | null;
+  contract_end: string | null;
+  contract_start: string | null;
+  days_left: number;
+  annual_rent: number | null;
+  rent_type: string;
+  parking: string;
+  owner_name: string;
+  phone: string;
+  email: string;
+  source: string;
+  building_contacts: number;
+}
+
+export interface ExpiringSummary {
+  expiring_30: number;
+  expiring_60: number;
+  expiring_90: number;
+  vacant?: number;
+  total_active?: number;
+}
+
+export interface ExpiringUnitsResponse {
+  units: ExpiringUnit[];
+  total: number;
+  with_contact: number;
+  summary: ExpiringSummary;
+  sources: string[];
+  buildings: string[];
+}
+
+export interface ExpiringFilters {
+  days?: number;
+  building?: string;
+  bedrooms?: string;
+  has_contact?: boolean;
+}
+
+export async function getExpiringUnits(
+  filters: ExpiringFilters = {}
+): Promise<ExpiringUnitsResponse> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== null && value !== "") {
+      params.set(key, String(value));
+    }
+  }
+  return request<ExpiringUnitsResponse>(`/api/reidin/expiring?${params.toString()}`);
+}
+
 // --- Health ---
 
 export interface HealthResponse {
@@ -443,210 +566,8 @@ export interface HealthResponse {
   data_loaded: boolean;
   total_leads: number;
   total_buildings: number;
-  pf_merge_status: string;
-  client_id_index_size?: number;
-  rentals_loaded?: boolean;
-  total_rentals?: number;
 }
 
 export async function getHealth(): Promise<HealthResponse> {
   return request<HealthResponse>("/api/health");
-}
-
-export async function reloadData(): Promise<{ status: string; total_leads: number }> {
-  return request("/api/leads/reload", { method: "POST" });
-}
-
-// --- Rentals / Lease Expiry ---
-
-export interface ExpiringLease {
-  building_name: string | null;
-  unit_number: string | null;
-  bedrooms: number | null;
-  size_sqft: number | null;
-  annualized_rent: number | null;
-  contract_start: string | null;
-  contract_end: string | null;
-  days_remaining: number;
-  tenant_name: string | null;
-  owner_name: string | null;
-}
-
-export interface RentalsStatsResponse {
-  active_count: number;
-  expiring_30: number;
-  expiring_60: number;
-  expiring_90: number;
-  total_records: number;
-}
-
-export async function getExpiringLeases(params: { days?: number; building?: string; bedrooms?: string; page?: number; page_size?: number } = {}): Promise<{ leases: ExpiringLease[]; total: number; page: number; page_size: number }> {
-  const p = new URLSearchParams();
-  if (params.days) p.set("days", String(params.days));
-  if (params.building) p.set("building", params.building);
-  if (params.bedrooms) p.set("bedrooms", params.bedrooms);
-  if (params.page) p.set("page", String(params.page));
-  if (params.page_size) p.set("page_size", String(params.page_size));
-  return request(`/api/rentals/expiring?${p}`);
-}
-
-export async function getRentalsStats(): Promise<RentalsStatsResponse> {
-  return request("/api/rentals/stats");
-}
-
-// --- Contacts ---
-
-export interface ContactProperty {
-  id: number;
-  contact_id: number;
-  building_name: string | null;
-  unit_number: string | null;
-  bedrooms: string | null;
-  price_aed: number | null;
-  intent: string | null;
-  notes: string | null;
-}
-
-export interface Contact {
-  id: number;
-  full_name: string | null;
-  phone: string | null;
-  email: string | null;
-  contact_type: string | null;
-  source: string | null;
-  budget_min: number | null;
-  budget_max: number | null;
-  agent_assigned: string | null;
-  last_contact_date: string | null;
-  created_at: string | null;
-  updated_at: string | null;
-  properties?: ContactProperty[];
-}
-
-export interface ContactListResponse {
-  contacts: Contact[];
-  total: number;
-}
-
-export async function getContacts(params: { q?: string; contact_type?: string; limit?: number } = {}): Promise<ContactListResponse> {
-  const p = new URLSearchParams();
-  if (params.q) p.set("q", params.q);
-  if (params.contact_type) p.set("contact_type", params.contact_type);
-  if (params.limit) p.set("limit", String(params.limit));
-  return request(`/api/contacts?${p}`);
-}
-
-export async function getContact(id: number): Promise<Contact> {
-  return request(`/api/contacts/${id}`);
-}
-
-export async function createContact(data: Partial<Contact> & { properties?: Partial<ContactProperty>[] }): Promise<{ contact_id: number }> {
-  return request("/api/contacts", { method: "POST", body: JSON.stringify(data) });
-}
-
-export async function updateContact(id: number, data: Partial<Contact>): Promise<void> {
-  await request(`/api/contacts/${id}`, { method: "PUT", body: JSON.stringify(data) });
-}
-
-export async function deleteContact(id: number): Promise<void> {
-  await request(`/api/contacts/${id}`, { method: "DELETE" });
-}
-
-export async function addContactProperty(contactId: number, data: Partial<ContactProperty>): Promise<{ property_id: number }> {
-  return request(`/api/contacts/${contactId}/properties`, { method: "POST", body: JSON.stringify(data) });
-}
-
-export async function deleteContactProperty(contactId: number, propId: number): Promise<void> {
-  await request(`/api/contacts/${contactId}/properties/${propId}`, { method: "DELETE" });
-}
-
-// --- Listing Matcher ---
-
-export interface MatchResult {
-  building: string;
-  unit: string;
-  size_sqft: number | null;
-  beds: string | null;
-  owner_name: string;
-  phone: string;
-  phone_display: string;
-  email: string;
-  source_file: string;
-  transaction_date: string;
-  transaction_value: number | null;
-  confidence: number;
-  match_type: string;
-}
-
-export interface MatchRequest {
-  building_name: string;
-  unit_number?: string;
-  bedrooms?: string;
-  size_sqft?: number;
-  listing_url?: string;
-}
-
-export async function matchListing(req: MatchRequest): Promise<{ results: MatchResult[]; count: number }> {
-  return request("/api/matcher/match", { method: "POST", body: JSON.stringify(req) });
-}
-
-// --- Bayut Listings ---
-
-export interface BayutListing {
-  listing_url: string | null;
-  building_name: string | null;
-  bedrooms: number | null;
-  bathrooms: number | null;
-  size_sqft: number | null;
-  price_aed: number | null;
-  listing_type: string | null;
-  view: string | null;
-  listing_title: string | null;
-  scraped_at: string | null;
-}
-
-export interface BayutListingsResponse {
-  listings: BayutListing[];
-  total: number;
-  page: number;
-  page_size: number;
-}
-
-export async function getBayutListings(params: { building?: string; bedrooms?: string; listing_type?: string; page?: number; page_size?: number } = {}): Promise<BayutListingsResponse> {
-  const p = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) {
-    if (v !== undefined && v !== "") p.set(k, String(v));
-  }
-  return request(`/api/bayut?${p}`);
-}
-
-export async function getBayutStats(): Promise<{ total: number; for_rent: number; for_sale: number; buildings: number }> {
-  return request("/api/bayut/stats");
-}
-
-// --- Client Match ---
-
-export interface ClientMatchResult {
-  building_name: string | null;
-  bedrooms: number | null;
-  size_sqft: number | null;
-  price_aed: number | null;
-  listing_type: string | null;
-  view: string | null;
-  listing_title: string | null;
-  listing_url: string | null;
-}
-
-export interface ClientMatchRequest {
-  listing_type?: string;
-  bedrooms?: number | string;
-  budget_min?: number;
-  budget_max?: number;
-  building?: string;
-  size_min?: number;
-  size_max?: number;
-}
-
-export async function findClientMatches(req: ClientMatchRequest): Promise<{ results: ClientMatchResult[]; total: number }> {
-  return request("/api/client-match/search", { method: "POST", body: JSON.stringify(req) });
 }

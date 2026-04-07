@@ -4,14 +4,11 @@ Cached data loading — mirrors app.py load_data() logic.
 """
 
 import sys
-import logging
 import pandas as pd
 from pathlib import Path
 from functools import lru_cache
 
 from .config import PROJECT_ROOT, PARQUET_PATH, PF_CSV_PATH
-
-logger = logging.getLogger("orva_api")
 
 # Add project root to sys.path so we can import existing modules
 if str(PROJECT_ROOT) not in sys.path:
@@ -82,7 +79,6 @@ def _load_leads_df() -> pd.DataFrame:
         )
 
     # Merge PF scraped data
-    pf_status = "not_found"
     if PF_CSV_PATH.exists():
         try:
             pf = pd.read_csv(PF_CSV_PATH, encoding="utf-8", low_memory=False, on_bad_lines="skip")
@@ -93,14 +89,10 @@ def _load_leads_df() -> pd.DataFrame:
                         pf[c] = pd.NA
                 pf = pf[[c for c in df.columns if c in pf.columns]]
                 df = pd.concat([df, pf], ignore_index=True)
-                pf_status = "ok"
-            else:
-                pf_status = "empty"
         except Exception:
-            logger.exception("Failed to merge PropertyFinder CSV from %s", PF_CSV_PATH)
-            pf_status = "failed"
+            pass
 
-    return df, pf_status
+    return df
 
 
 class DataStore:
@@ -111,59 +103,23 @@ class DataStore:
         self.ref_df: pd.DataFrame = pd.DataFrame()
         self.ref_stats: dict = {}
         self.rentals_df: pd.DataFrame | None = None
-        self.client_id_index: dict[str, int] = {}
-        self.pf_merge_status: str = "not_loaded"
-        self._buildings_cache: list[str] = []
         self._loaded = False
 
-    def _load_rentals(self):
-        """Load rental data from CSV."""
-        try:
-            from rental_processor import load_rental_data  # noqa: E402
-            from .config import RENTALS_CSV_PATH
-            if RENTALS_CSV_PATH.exists():
-                self.rentals_df = load_rental_data()
-                logger.info("Loaded %d rental records", len(self.rentals_df))
-            else:
-                logger.warning("Rentals CSV not found: %s", RENTALS_CSV_PATH)
-                self.rentals_df = pd.DataFrame()
-        except Exception:
-            logger.exception("Failed to load rental data")
-            self.rentals_df = pd.DataFrame()
-
     def load(self):
-        from client_data_manager import make_client_id  # noqa: E402
-
-        self.leads_df, self.pf_merge_status = _load_leads_df()
+        self.leads_df = _load_leads_df()
         self.ref_df, self.ref_stats = load_reference_data()
-
-        # Pre-compute client_id → row index for O(1) lookups
-        self.client_id_index = {}
-        for idx, row in self.leads_df.iterrows():
-            cid = make_client_id(
-                name=row.get("owner_name"),
-                building=row.get("building_name"),
-                unit=row.get("unit_number"),
-            )
-            if cid not in self.client_id_index:
-                self.client_id_index[cid] = idx
-        logger.info("Built client_id index: %d entries", len(self.client_id_index))
-
-        # Cache buildings list
-        if not self.leads_df.empty:
-            self._buildings_cache = sorted(
-                self.leads_df["building_name"]
-                .dropna()
-                .str.strip()
-                .loc[lambda s: s.ne("")]
-                .unique()
-                .tolist()
-            )
-        else:
-            self._buildings_cache = []
-
         self._load_rentals()
         self._loaded = True
+
+    def _load_rentals(self):
+        """Load unified rental data (PropertyMonitor + Reidin)."""
+        try:
+            from rental_processor import load_rental_data
+            self.rentals_df = load_rental_data()
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            self.rentals_df = pd.DataFrame()
 
     def reload(self):
         self.load()
@@ -174,7 +130,16 @@ class DataStore:
 
     @property
     def buildings(self) -> list[str]:
-        return self._buildings_cache
+        if self.leads_df.empty:
+            return []
+        return sorted(
+            self.leads_df["building_name"]
+            .dropna()
+            .str.strip()
+            .loc[lambda s: s.ne("")]
+            .unique()
+            .tolist()
+        )
 
 
 # Global singleton
