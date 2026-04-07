@@ -93,8 +93,9 @@ def scrape_and_match(
 
     from listing_matcher.url_scraper import scrape_listing_url
     from listing_matcher.matcher import match_listing as _match
+    from listing_matcher.enrichment import enrich_matches
 
-    listing = await scrape_listing_url(url)
+    listing = scrape_listing_url(url)
     if listing.get("error"):
         raise HTTPException(400, listing["error"])
 
@@ -108,6 +109,14 @@ def scrape_and_match(
 
     df = store.leads_df.rename(columns=_TO_MATCHER_COLS)
     matches = _match(match_input, df)
+
+    # Enrich with rental intel, competition, and registry data
+    matches = enrich_matches(
+        matches,
+        listing_building=listing.get("building", ""),
+        listing_bedrooms=listing.get("bedrooms"),
+        listing_price=listing.get("price"),
+    )
 
     return {"listing": listing, "matches": matches, "count": len(matches)}
 
