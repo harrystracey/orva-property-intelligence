@@ -15,17 +15,45 @@ from ..auth import get_current_user
 router = APIRouter(prefix="/api/client-match", tags=["client_match"])
 
 _BAYUT_CSV = _root / "data" / "bayut_palm_listings.csv"
-_df_cache: pd.DataFrame | None = None
+_PF_CSV = _root / "scraped_data" / "propertyfinder_scraped_leads.csv"
+_PROPSPACE_CSV = _root / "scraped_data" / "propspace_leads.csv"
+_bayut_cache: pd.DataFrame | None = None
+_pf_cache: pd.DataFrame | None = None
 
 
 def _load_bayut() -> pd.DataFrame:
-    global _df_cache
-    if _df_cache is None:
+    global _bayut_cache
+    if _bayut_cache is None:
         if _BAYUT_CSV.exists():
-            _df_cache = pd.read_csv(_BAYUT_CSV, low_memory=False, on_bad_lines="skip")
+            _bayut_cache = pd.read_csv(_BAYUT_CSV, low_memory=False, on_bad_lines="skip")
         else:
-            _df_cache = pd.DataFrame()
-    return _df_cache
+            _bayut_cache = pd.DataFrame()
+    return _bayut_cache
+
+
+def _load_pf() -> pd.DataFrame:
+    global _pf_cache
+    if _pf_cache is None:
+        if _PF_CSV.exists():
+            try:
+                pf = pd.read_csv(_PF_CSV, low_memory=False, on_bad_lines="skip")
+                # Normalize PF columns to match Bayut schema
+                rename = {}
+                if "listing_price" in pf.columns:
+                    rename["listing_price"] = "price_aed"
+                if "room_type" in pf.columns:
+                    rename["room_type"] = "bedrooms"
+                if "size_sqm" in pf.columns:
+                    pf["size_sqft"] = pd.to_numeric(pf["size_sqm"], errors="coerce") * 10.7639
+                if rename:
+                    pf = pf.rename(columns=rename)
+                pf["_portal"] = "propertyfinder"
+                _pf_cache = pf
+            except Exception:
+                _pf_cache = pd.DataFrame()
+        else:
+            _pf_cache = pd.DataFrame()
+    return _pf_cache
 
 
 def _safe(val):
@@ -56,10 +84,21 @@ def find_matches(
       size_max?: number,
     }
     """
-    df = _load_bayut()
-    if df.empty:
+    # Combine Bayut + PropertyFinder listings
+    frames = []
+    bayut = _load_bayut()
+    if not bayut.empty:
+        bayut = bayut.copy()
+        bayut["_portal"] = "bayut"
+        frames.append(bayut)
+    pf = _load_pf()
+    if not pf.empty:
+        frames.append(pf)
+
+    if not frames:
         return {"results": [], "total": 0}
 
+    df = pd.concat(frames, ignore_index=True)
     filtered = df.copy()
 
     listing_type = body.get("listing_type", "")
@@ -113,6 +152,10 @@ def find_matches(
             "listing_type": _safe(row.get("listing_type")),
             "listing_title": _safe(row.get("listing_title")),
             "listing_url": _safe(row.get("listing_url")),
+            "portal": _safe(row.get("_portal", "bayut")),
+            "owner_name": _safe(row.get("owner_name")),
+            "phone": _safe(row.get("phone")),
         })
 
-    return {"results": results, "total": total}
+    sources = sorted(df["_portal"].dropna().unique().tolist()) if "_portal" in df.columns else ["bayut"]
+    return {"results": results, "total": total, "sources": sources}

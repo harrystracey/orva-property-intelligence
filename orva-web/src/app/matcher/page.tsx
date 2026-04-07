@@ -166,45 +166,117 @@ function MatcherForm() {
 
       {/* Results */}
       {searched && (
-        <div className="overflow-hidden rounded-xl border border-border bg-card">
-          <div className="border-b border-border px-4 py-2">
-            <span className="text-sm text-muted">{results.length} match{results.length !== 1 ? "es" : ""} found</span>
-          </div>
+        <div className="space-y-3">
+          <div className="text-sm text-muted">{results.length} match{results.length !== 1 ? "es" : ""} found</div>
+
           {results.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-muted">No matches — try removing unit number or adjusting size</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border bg-background/50">
-                    {["Confidence", "Match", "Owner", "Phone", "Unit", "Size", "Source"].map(h => (
-                      <th key={h} className="whitespace-nowrap px-4 py-2 text-left text-xs font-medium text-muted">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {results.map((r, i) => (
-                    <tr key={i} className="border-b border-border/50 hover:bg-card-hover">
-                      <td className="px-4 py-2">{confidenceBadge(r.confidence)}</td>
-                      <td className="px-4 py-2 text-xs text-muted">{MATCH_TYPE_LABEL[r.match_type] ?? r.match_type}</td>
-                      <td className="px-4 py-2">
-                        <span className="flex items-center gap-1 text-sm text-foreground">
-                          <User size={12} className="text-muted" />{r.owner_name || "--"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2">
-                        <span className="flex items-center gap-1 text-sm font-mono text-accent">
-                          <Phone size={12} />{r.phone_display || r.phone || "--"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 text-sm text-muted">{r.unit || "--"}</td>
-                      <td className="px-4 py-2 text-sm text-muted">{r.size_sqft ? `${Math.round(r.size_sqft).toLocaleString()} sqft` : "--"}</td>
-                      <td className="px-4 py-2 text-xs text-muted">{r.source_file || "--"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted">
+              No matches — try removing unit number or adjusting size
             </div>
+          ) : (
+            results.map((r, i) => {
+              const intel = (r as Record<string, unknown>).intelligence as Record<string, unknown> | undefined;
+              const hasPhone = r.phone && r.phone !== "" && r.phone !== "nan";
+              const leaseStatus = intel?.lease_status as string | undefined;
+              const daysLeft = intel?.days_remaining as number | undefined;
+              const annualRent = intel?.annual_rent as number | undefined;
+              const competition = intel?.competition as Record<string, unknown> | undefined;
+              const noPhone = intel?.no_phone as boolean | undefined;
+              const nearbyOwners = intel?.nearby_owners as Array<Record<string, unknown>> | undefined;
+              const registry = intel?.registry as Record<string, unknown> | undefined;
+              const estYield = intel?.estimated_yield as number | undefined;
+
+              return (
+                <div key={i} className={`rounded-xl border bg-card p-4 ${i === 0 ? "border-accent/40" : "border-border"}`}>
+                  {/* Header: confidence + match type */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      {confidenceBadge(r.confidence)}
+                      <span className="text-xs text-muted">{MATCH_TYPE_LABEL[r.match_type] ?? r.match_type}</span>
+                    </div>
+                    <span className="text-xs text-muted">Unit {r.unit || "?"} &bull; {r.building}</span>
+                  </div>
+
+                  {/* Owner + Phone — the main info */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <User size={16} className="text-muted" />
+                      <span className="text-sm font-medium text-foreground">{r.owner_name || "Unknown"}</span>
+                    </div>
+                    {hasPhone ? (
+                      <a href={`tel:${r.phone}`}
+                        className="flex items-center gap-1.5 rounded-lg bg-accent/10 px-3 py-1.5 text-sm font-mono font-semibold text-accent hover:bg-accent/20 transition-colors">
+                        <Phone size={14} />{r.phone_display || r.phone}
+                      </a>
+                    ) : (
+                      <span className="rounded-lg bg-danger/10 px-3 py-1.5 text-xs text-danger">No phone</span>
+                    )}
+                  </div>
+
+                  {/* Intelligence panel */}
+                  {intel && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2 pt-2 border-t border-border/50">
+                      {leaseStatus && (
+                        <div className="text-xs">
+                          <span className="text-muted">Lease: </span>
+                          <span className={leaseStatus === "expiring_soon" ? "text-danger font-semibold" : leaseStatus === "expiring" ? "text-warning font-semibold" : leaseStatus === "expired" ? "text-danger" : "text-foreground"}>
+                            {leaseStatus === "expiring_soon" ? `Expires in ${daysLeft}d` :
+                             leaseStatus === "expiring" ? `Expires in ${daysLeft}d` :
+                             leaseStatus === "expired" ? `Expired ${Math.abs(daysLeft || 0)}d ago` :
+                             leaseStatus === "active" ? `Active (${daysLeft}d left)` : leaseStatus}
+                          </span>
+                        </div>
+                      )}
+                      {annualRent && (
+                        <div className="text-xs">
+                          <span className="text-muted">Rent: </span>
+                          <span className="text-foreground">AED {Math.round(annualRent).toLocaleString()}/yr</span>
+                        </div>
+                      )}
+                      {competition && (competition.total_listings as number) > 0 && (
+                        <div className="text-xs">
+                          <span className="text-muted">Competition: </span>
+                          <span className="text-foreground">{competition.total_listings as number} listings</span>
+                        </div>
+                      )}
+                      {estYield && (
+                        <div className="text-xs">
+                          <span className="text-muted">Yield: </span>
+                          <span className="text-foreground">{estYield}% gross</span>
+                        </div>
+                      )}
+                      {registry?.last_sale_price && (
+                        <div className="text-xs">
+                          <span className="text-muted">Last sale: </span>
+                          <span className="text-foreground">AED {Math.round(registry.last_sale_price as number).toLocaleString()}</span>
+                        </div>
+                      )}
+                      {r.size_sqft && (
+                        <div className="text-xs">
+                          <span className="text-muted">Size: </span>
+                          <span className="text-foreground">{Math.round(r.size_sqft).toLocaleString()} sqft</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* No phone fallback suggestions */}
+                  {noPhone && nearbyOwners && nearbyOwners.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-border/50">
+                      <p className="text-xs text-muted mb-1">Nearby unit owners (same floor ±2):</p>
+                      <div className="space-y-1">
+                        {nearbyOwners.map((nb, j) => (
+                          <div key={j} className="flex items-center justify-between text-xs">
+                            <span className="text-muted">Unit {nb.unit as string} — {nb.owner_name as string}</span>
+                            <a href={`tel:${nb.phone}`} className="font-mono text-accent hover:underline">{nb.phone as string}</a>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })
           )}
         </div>
       )}
