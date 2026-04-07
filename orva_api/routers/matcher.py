@@ -116,6 +116,7 @@ def scrape_and_match(
         listing_building=listing.get("building", ""),
         listing_bedrooms=listing.get("bedrooms"),
         listing_price=listing.get("price"),
+        leads_df=store.leads_df,
     )
 
     return {"listing": listing, "matches": matches, "count": len(matches)}

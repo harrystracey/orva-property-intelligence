@@ -259,25 +259,42 @@ def append_records(records: List[Dict]) -> int:
 
 class PalmListingsScraper:
 
-    def __init__(self):
+    def __init__(self, headless: bool = False):
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
+        self.headless = headless
+        self._playwright = None
 
     async def connect(self) -> bool:
-        playwright = await async_playwright().start()
+        self._playwright = await async_playwright().start()
         try:
-            self.browser = await playwright.chromium.connect_over_cdp(CDP_URL)
-            if self.browser.contexts:
-                self.context = self.browser.contexts[0]
+            if self.headless:
+                # Headless mode: launch own Chromium (for VPS / automated scraping)
+                self.browser = await self._playwright.chromium.launch(
+                    headless=True,
+                    args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
+                )
+                self.context = await self.browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                    viewport={"width": 1280, "height": 800},
+                )
+                self.page = await self.context.new_page()
+                print("[OK] Launched headless Chromium")
             else:
-                self.context = await self.browser.new_context()
-            self.page = await self.context.new_page()
-            print(f"[OK] Connected to Chrome")
+                # CDP mode: connect to existing Chrome (user's machine)
+                self.browser = await self._playwright.chromium.connect_over_cdp(CDP_URL)
+                if self.browser.contexts:
+                    self.context = self.browser.contexts[0]
+                else:
+                    self.context = await self.browser.new_context()
+                self.page = await self.context.new_page()
+                print(f"[OK] Connected to Chrome")
             return True
         except Exception as e:
             print(f"[ERROR] Cannot connect to Chrome: {e}")
-            print("Make sure Chrome is running with --remote-debugging-port=9222")
+            if not self.headless:
+                print("Make sure Chrome is running with --remote-debugging-port=9222")
             return False
 
     async def scrape_type(
@@ -373,11 +390,11 @@ class PalmListingsScraper:
 # Convenience function for running from run_palm_listings.py
 # ---------------------------------------------------------------------------
 
-async def run_scrape(listing_types: List[str] = None, max_pages: int = None, resume: bool = True):
+async def run_scrape(listing_types: List[str] = None, max_pages: int = None, resume: bool = True, headless: bool = False):
     if listing_types is None:
         listing_types = ["sale", "rent"]
 
-    scraper = PalmListingsScraper()
+    scraper = PalmListingsScraper(headless=headless)
     if not await scraper.connect():
         return
 

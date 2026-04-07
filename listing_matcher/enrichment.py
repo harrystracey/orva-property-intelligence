@@ -211,11 +211,68 @@ def get_registry_info(building: str, unit: str) -> dict:
     return result
 
 
+def get_nearby_owners(building: str, unit: str, leads_df: Optional[pd.DataFrame] = None) -> list[dict]:
+    """
+    Find owners of nearby units (same building, floor ±2) as networking contacts.
+    Used when the exact unit has no phone number.
+    """
+    if leads_df is None or leads_df.empty or not unit:
+        return []
+
+    bldg_key = _norm_building(building)
+
+    # Normalize leads building names
+    bldg_col = "building_name" if "building_name" in leads_df.columns else "Building Name"
+    unit_col = "unit_number" if "unit_number" in leads_df.columns else "Unit Number"
+    phone_col = "phone" if "phone" in leads_df.columns else "Phone"
+    name_col = "owner_name" if "owner_name" in leads_df.columns else "Owner Name"
+
+    if bldg_col not in leads_df.columns:
+        return []
+
+    bldg_matches = leads_df[
+        leads_df[bldg_col].fillna("").apply(_norm_building).str.contains(bldg_key[:10], na=False)
+    ]
+
+    if bldg_matches.empty:
+        return []
+
+    # Extract floor from unit number
+    floor_match = re.match(r"(\d{1,2})", unit)
+    if not floor_match:
+        return []
+    target_floor = int(floor_match.group(1))
+
+    results = []
+    for _, row in bldg_matches.iterrows():
+        row_unit = str(row.get(unit_col, "")).strip()
+        row_phone = str(row.get(phone_col, "")).strip()
+        if not row_phone or row_phone in ("nan", "", "None"):
+            continue
+        # Extract floor from this unit
+        fm = re.match(r"(\d{1,2})", row_unit)
+        if not fm:
+            continue
+        row_floor = int(fm.group(1))
+        if abs(row_floor - target_floor) <= 2 and row_unit.upper() != unit.upper():
+            results.append({
+                "unit": row_unit,
+                "owner_name": str(row.get(name_col, "")),
+                "phone": row_phone,
+                "floor_diff": abs(row_floor - target_floor),
+            })
+
+    # Sort by closest floor, limit to 5
+    results.sort(key=lambda x: x["floor_diff"])
+    return results[:5]
+
+
 def enrich_matches(
     matches: list[dict],
     listing_building: str = "",
     listing_bedrooms: Optional[int] = None,
     listing_price: Optional[float] = None,
+    leads_df: Optional[pd.DataFrame] = None,
 ) -> list[dict]:
     """
     Enrich match results with rental intel, competition, and registry data.
@@ -256,6 +313,19 @@ def enrich_matches(
         # Competition (building-level)
         if competition:
             intel["competition"] = competition
+
+        # Flag if this match has no phone — suggest fallbacks
+        phone = match.get("phone", "").strip()
+        if not phone or phone in ("nan", "None", ""):
+            intel["no_phone"] = True
+            intel["fallback_suggestions"] = ["dld_trakheesi"]
+
+            # Find nearby unit owners as networking contacts
+            if unit and leads_df is not None:
+                nearby = get_nearby_owners(building, unit, leads_df)
+                if nearby:
+                    intel["nearby_owners"] = nearby
+                    intel["fallback_suggestions"].append("nearby_owners")
 
         match["intelligence"] = intel
 

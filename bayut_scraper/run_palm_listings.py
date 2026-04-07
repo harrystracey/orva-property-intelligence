@@ -35,6 +35,8 @@ def main():
                         help="Resume from last saved page (default: True)")
     parser.add_argument("--fresh", action="store_true",
                         help="Start fresh (ignore previous progress, overwrite output)")
+    parser.add_argument("--headless", action="store_true",
+                        help="Launch headless Chromium instead of connecting to Chrome CDP (for server use)")
     args = parser.parse_args()
 
     # Determine types to scrape
@@ -84,7 +86,7 @@ def main():
     print("=" * 70)
     print()
 
-    if not args.test:
+    if not args.test and not args.headless:
         print("Make sure Chrome is running with remote debugging on port 9222.")
         print("If not, run first:")
         print("  python bayut_scraper/run_bayut_scrape.py --launch-chrome")
@@ -99,6 +101,7 @@ def main():
         listing_types=listing_types,
         max_pages=max_pages,
         resume=not args.fresh,
+        headless=args.headless,
     ))
 
 
