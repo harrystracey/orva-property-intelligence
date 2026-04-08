@@ -23,6 +23,16 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "ORVA -- Property Intelligence",
   description: "Palm Jumeirah Real Estate Lead Management",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "ORVA",
+  },
+  other: {
+    "theme-color": "#10b981",
+    "apple-mobile-web-app-capable": "yes",
+  },
 };
 
 export default function RootLayout({

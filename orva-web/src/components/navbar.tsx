@@ -250,10 +250,13 @@ export function Navbar() {
           <Link
             key={item.href}
             href={item.href}
-            className={`flex flex-col items-center justify-center gap-0.5 min-h-[48px] min-w-[48px] px-1 py-1.5 ${
+            className={`relative flex flex-col items-center justify-center gap-0.5 min-h-[48px] min-w-[48px] px-1 py-1.5 active:scale-95 transition-transform duration-100 ${
               isActive(item.href) ? "text-accent" : "text-muted"
             }`}
           >
+            {isActive(item.href) && (
+              <span className="absolute top-0 left-1/4 right-1/4 h-0.5 rounded-full bg-accent" />
+            )}
             {item.icon}
             <span className="text-[10px]">{item.label}</span>
           </Link>

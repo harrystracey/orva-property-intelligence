@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import { LoginForm } from "@/components/login-form";
 import { getAllReminders, markReminderDone, deleteReminder, ReminderRecord } from "@/lib/api";
 import { CalendarClock, Check, Trash2, Clock, ArrowRight } from "lucide-react";
+import { SkeletonReminderCard } from "@/components/skeleton";
 
 function formatDateTime(iso: string | null | undefined) {
   if (!iso) return "--";
@@ -115,8 +116,8 @@ export default function FollowUpsPage() {
 
       {/* List */}
       {loading ? (
-        <div className="rounded-xl border border-border bg-card p-8 text-center">
-          <p className="text-muted">Loading reminders...</p>
+        <div className="flex flex-col gap-2">
+          {Array.from({ length: 3 }, (_, i) => <SkeletonReminderCard key={i} />)}
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-xl border border-border bg-card p-8 text-center">

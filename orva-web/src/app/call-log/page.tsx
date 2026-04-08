@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import { LoginForm } from "@/components/login-form";
 import { getAllCalls, CallRecord } from "@/lib/api";
 import { Phone, ArrowRight, Search } from "lucide-react";
+import { SkeletonCallEntry } from "@/components/skeleton";
 
 function formatDateTime(iso: string | null | undefined) {
   if (!iso) return "--";
@@ -120,8 +121,8 @@ export default function CallLogPage() {
 
       {/* Call list */}
       {loading ? (
-        <div className="rounded-xl border border-border bg-card p-8 text-center">
-          <p className="text-muted">Loading calls...</p>
+        <div className="flex flex-col gap-1.5">
+          {Array.from({ length: 3 }, (_, i) => <SkeletonCallEntry key={i} />)}
         </div>
       ) : filtered.length === 0 ? (
         <div className="rounded-xl border border-border bg-card p-8 text-center">

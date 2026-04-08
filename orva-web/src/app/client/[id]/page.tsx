@@ -97,6 +97,9 @@ export default function ClientProfilePage() {
   const [reminderDate, setReminderDate] = useState("");
   const [reminderNote, setReminderNote] = useState("");
 
+  // Mobile tab
+  const [activeTab, setActiveTab] = useState<"notes" | "reminders" | "calls">("notes");
+
   // Call log form
   const [showCallForm, setShowCallForm] = useState(false);
   const [callOutcome, setCallOutcome] = useState("no_answer");
@@ -401,145 +404,167 @@ export default function ClientProfilePage() {
         </div>
       )}
 
-      {/* Two-column: Notes + Reminders/Calls */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Notes */}
-        <div className="rounded-xl border border-border bg-card p-4">
-          <h2 className="mb-3 text-sm font-semibold text-foreground">Notes</h2>
-          <div className="mb-3 flex gap-2">
-            <input
-              type="text"
-              value={noteText}
-              onChange={(e) => setNoteText(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleAddNote()}
-              placeholder="Add a note..."
-              className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted/50 focus:border-accent focus:outline-none"
-            />
-            <button
-              onClick={handleAddNote}
-              disabled={!noteText.trim()}
-              className="rounded-lg bg-accent p-2 text-white hover:bg-accent-hover disabled:opacity-40"
-            >
-              <Plus size={16} />
-            </button>
-          </div>
-          <div className="flex flex-col gap-2 max-h-80 overflow-y-auto">
-            {profile.notes.length === 0 ? (
-              <p className="text-xs text-muted py-4 text-center">No notes yet</p>
-            ) : (
-              profile.notes.map((note) => (
+      {/* ─── Mobile: Tabbed layout ─── */}
+      <div className="md:hidden flex flex-col gap-3">
+        <div className="flex gap-1 rounded-lg border border-border bg-card p-1">
+          {(["notes", "reminders", "calls"] as const).map((tab) => {
+            const counts = { notes: profile.notes.length, reminders: profile.reminders.filter(r => r.status !== "done").length, calls: profile.calls.length };
+            const labels = { notes: "Notes", reminders: "Reminders", calls: "Calls" };
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`flex-1 rounded-md px-2 py-2 text-sm font-medium text-center transition-colors ${
+                  activeTab === tab ? "bg-accent/15 text-accent" : "text-muted"
+                }`}
+              >
+                {labels[tab]} ({counts[tab]})
+              </button>
+            );
+          })}
+        </div>
+
+        {activeTab === "notes" && (
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="mb-3 flex gap-2">
+              <input type="text" value={noteText} onChange={(e) => setNoteText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAddNote()} placeholder="Add a note..." className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted/50 focus:border-accent focus:outline-none" />
+              <button onClick={handleAddNote} disabled={!noteText.trim()} className="rounded-lg bg-accent p-2 text-white hover:bg-accent-hover disabled:opacity-40"><Plus size={16} /></button>
+            </div>
+            <div className="flex flex-col gap-2">
+              {profile.notes.length === 0 ? (
+                <p className="text-xs text-muted py-4 text-center">No notes yet</p>
+              ) : profile.notes.map((note) => (
                 <div key={note.id} className="rounded-lg border border-border/50 bg-background p-3">
                   {editingNote === note.id ? (
                     <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={editNoteText}
-                        onChange={(e) => setEditNoteText(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleEditNote(note.id)}
-                        className="flex-1 rounded border border-border bg-card px-2 py-1 text-sm text-foreground focus:border-accent focus:outline-none"
-                        autoFocus
-                      />
-                      <button onClick={() => handleEditNote(note.id)} className="text-success hover:text-accent-hover">
-                        <Check size={14} />
-                      </button>
-                      <button onClick={() => setEditingNote(null)} className="text-muted hover:text-foreground">
-                        <X size={14} />
-                      </button>
+                      <input type="text" value={editNoteText} onChange={(e) => setEditNoteText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleEditNote(note.id)} className="flex-1 rounded border border-border bg-card px-2 py-1 text-sm text-foreground focus:border-accent focus:outline-none" autoFocus />
+                      <button onClick={() => handleEditNote(note.id)} className="text-success hover:text-accent-hover"><Check size={14} /></button>
+                      <button onClick={() => setEditingNote(null)} className="text-muted hover:text-foreground"><X size={14} /></button>
                     </div>
                   ) : (
                     <>
                       <p className="text-sm text-foreground">{note.text}</p>
                       <div className="mt-1 flex items-center justify-between">
-                        <span className="text-[10px] text-muted">
-                          {formatDateTime(note.timestamp)}
-                          {note.edited_at && " (edited)"}
-                        </span>
+                        <span className="text-[10px] text-muted">{formatDateTime(note.timestamp)}{note.edited_at && " (edited)"}</span>
                         <div className="flex gap-1">
-                          <button
-                            onClick={() => { setEditingNote(note.id); setEditNoteText(note.text); }}
-                            className="rounded p-2 text-muted hover:text-foreground"
-                          >
-                            <Pencil size={12} />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteNote(note.id)}
-                            className="rounded p-2 text-muted hover:text-danger"
-                          >
-                            <Trash2 size={12} />
-                          </button>
+                          <button onClick={() => { setEditingNote(note.id); setEditNoteText(note.text); }} className="rounded p-2 text-muted hover:text-foreground"><Pencil size={12} /></button>
+                          <button onClick={() => handleDeleteNote(note.id)} className="rounded p-2 text-muted hover:text-danger"><Trash2 size={12} /></button>
                         </div>
                       </div>
                     </>
                   )}
                 </div>
-              ))
-            )}
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === "reminders" && (
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="flex flex-col gap-2">
+              {profile.reminders.length === 0 ? (
+                <p className="text-xs text-muted py-4 text-center">No reminders</p>
+              ) : profile.reminders.map((r) => (
+                <div key={r.id} className={`flex items-start justify-between rounded-lg border p-3 ${r.status === "done" ? "border-border/30 opacity-50" : isOverdue(r.datetime) ? "border-danger/40 bg-danger/5" : "border-border/50 bg-background"}`}>
+                  <div className="flex-1">
+                    <p className="text-sm text-foreground">{r.note}</p>
+                    <p className="text-[10px] text-muted flex items-center gap-1 mt-1"><Clock size={10} />{formatDateTime(r.datetime)}{r.status === "done" && " -- Done"}{r.status !== "done" && isOverdue(r.datetime) && " -- OVERDUE"}</p>
+                  </div>
+                  {r.status !== "done" && <button onClick={() => handleMarkDone(r.id)} className="ml-2 rounded p-2 text-muted hover:text-success" title="Mark done"><Check size={14} /></button>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === "calls" && (
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="flex flex-col gap-2">
+              {profile.calls.length === 0 ? (
+                <p className="text-xs text-muted py-4 text-center">No calls logged</p>
+              ) : profile.calls.map((c) => (
+                <div key={c.id} className="rounded-lg border border-border/50 bg-background p-3">
+                  <div className="flex items-center justify-between">
+                    <span className={`text-sm font-medium ${outcomeColor(c.outcome)}`}>{outcomeSymbol(c.outcome)} {c.outcome.replace("_", " ")}</span>
+                    <span className="text-[10px] text-muted">{formatDateTime(c.called_at)}</span>
+                  </div>
+                  {c.notes && <p className="mt-1 text-xs text-muted">{c.notes}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ─── Desktop: Two-column grid (unchanged) ─── */}
+      <div className="hidden md:grid gap-4 md:grid-cols-2">
+        {/* Notes */}
+        <div className="rounded-xl border border-border bg-card p-4">
+          <h2 className="mb-3 text-sm font-semibold text-foreground">Notes</h2>
+          <div className="mb-3 flex gap-2">
+            <input type="text" value={noteText} onChange={(e) => setNoteText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAddNote()} placeholder="Add a note..." className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted/50 focus:border-accent focus:outline-none" />
+            <button onClick={handleAddNote} disabled={!noteText.trim()} className="rounded-lg bg-accent p-2 text-white hover:bg-accent-hover disabled:opacity-40"><Plus size={16} /></button>
+          </div>
+          <div className="flex flex-col gap-2 max-h-80 overflow-y-auto">
+            {profile.notes.length === 0 ? (
+              <p className="text-xs text-muted py-4 text-center">No notes yet</p>
+            ) : profile.notes.map((note) => (
+              <div key={note.id} className="rounded-lg border border-border/50 bg-background p-3">
+                {editingNote === note.id ? (
+                  <div className="flex gap-2">
+                    <input type="text" value={editNoteText} onChange={(e) => setEditNoteText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleEditNote(note.id)} className="flex-1 rounded border border-border bg-card px-2 py-1 text-sm text-foreground focus:border-accent focus:outline-none" autoFocus />
+                    <button onClick={() => handleEditNote(note.id)} className="text-success hover:text-accent-hover"><Check size={14} /></button>
+                    <button onClick={() => setEditingNote(null)} className="text-muted hover:text-foreground"><X size={14} /></button>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-sm text-foreground">{note.text}</p>
+                    <div className="mt-1 flex items-center justify-between">
+                      <span className="text-[10px] text-muted">{formatDateTime(note.timestamp)}{note.edited_at && " (edited)"}</span>
+                      <div className="flex gap-1">
+                        <button onClick={() => { setEditingNote(note.id); setEditNoteText(note.text); }} className="rounded p-2 text-muted hover:text-foreground"><Pencil size={12} /></button>
+                        <button onClick={() => handleDeleteNote(note.id)} className="rounded p-2 text-muted hover:text-danger"><Trash2 size={12} /></button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
           </div>
         </div>
 
         {/* Reminders + Call History */}
         <div className="flex flex-col gap-4">
-          {/* Reminders */}
           <div className="rounded-xl border border-border bg-card p-4">
             <h2 className="mb-3 text-sm font-semibold text-foreground">Reminders</h2>
             <div className="flex flex-col gap-2 max-h-40 overflow-y-auto">
               {profile.reminders.length === 0 ? (
                 <p className="text-xs text-muted py-4 text-center">No reminders</p>
-              ) : (
-                profile.reminders.map((r) => (
-                  <div
-                    key={r.id}
-                    className={`flex items-start justify-between rounded-lg border p-3 ${
-                      r.status === "done"
-                        ? "border-border/30 opacity-50"
-                        : isOverdue(r.datetime)
-                          ? "border-danger/40 bg-danger/5"
-                          : "border-border/50 bg-background"
-                    }`}
-                  >
-                    <div className="flex-1">
-                      <p className="text-sm text-foreground">{r.note}</p>
-                      <p className="text-[10px] text-muted flex items-center gap-1 mt-1">
-                        <Clock size={10} />
-                        {formatDateTime(r.datetime)}
-                        {r.status === "done" && " -- Done"}
-                        {r.status !== "done" && isOverdue(r.datetime) && " -- OVERDUE"}
-                      </p>
-                    </div>
-                    {r.status !== "done" && (
-                      <button
-                        onClick={() => handleMarkDone(r.id)}
-                        className="ml-2 rounded p-2 text-muted hover:text-success"
-                        title="Mark done"
-                      >
-                        <Check size={14} />
-                      </button>
-                    )}
+              ) : profile.reminders.map((r) => (
+                <div key={r.id} className={`flex items-start justify-between rounded-lg border p-3 ${r.status === "done" ? "border-border/30 opacity-50" : isOverdue(r.datetime) ? "border-danger/40 bg-danger/5" : "border-border/50 bg-background"}`}>
+                  <div className="flex-1">
+                    <p className="text-sm text-foreground">{r.note}</p>
+                    <p className="text-[10px] text-muted flex items-center gap-1 mt-1"><Clock size={10} />{formatDateTime(r.datetime)}{r.status === "done" && " -- Done"}{r.status !== "done" && isOverdue(r.datetime) && " -- OVERDUE"}</p>
                   </div>
-                ))
-              )}
+                  {r.status !== "done" && <button onClick={() => handleMarkDone(r.id)} className="ml-2 rounded p-2 text-muted hover:text-success" title="Mark done"><Check size={14} /></button>}
+                </div>
+              ))}
             </div>
           </div>
-
-          {/* Call History */}
           <div className="rounded-xl border border-border bg-card p-4">
             <h2 className="mb-3 text-sm font-semibold text-foreground">Call History</h2>
             <div className="flex flex-col gap-2 max-h-40 overflow-y-auto">
               {profile.calls.length === 0 ? (
                 <p className="text-xs text-muted py-4 text-center">No calls logged</p>
-              ) : (
-                profile.calls.map((c) => (
-                  <div key={c.id} className="rounded-lg border border-border/50 bg-background p-3">
-                    <div className="flex items-center justify-between">
-                      <span className={`text-sm font-medium ${outcomeColor(c.outcome)}`}>
-                        {outcomeSymbol(c.outcome)} {c.outcome.replace("_", " ")}
-                      </span>
-                      <span className="text-[10px] text-muted">{formatDateTime(c.called_at)}</span>
-                    </div>
-                    {c.notes && <p className="mt-1 text-xs text-muted">{c.notes}</p>}
+              ) : profile.calls.map((c) => (
+                <div key={c.id} className="rounded-lg border border-border/50 bg-background p-3">
+                  <div className="flex items-center justify-between">
+                    <span className={`text-sm font-medium ${outcomeColor(c.outcome)}`}>{outcomeSymbol(c.outcome)} {c.outcome.replace("_", " ")}</span>
+                    <span className="text-[10px] text-muted">{formatDateTime(c.called_at)}</span>
                   </div>
-                ))
-              )}
+                  {c.notes && <p className="mt-1 text-xs text-muted">{c.notes}</p>}
+                </div>
+              ))}
             </div>
           </div>
         </div>

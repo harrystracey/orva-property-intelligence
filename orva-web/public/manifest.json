@@ -1,0 +1,13 @@
+{
+  "name": "ORVA — Property Intelligence",
+  "short_name": "ORVA",
+  "description": "Palm Jumeirah Real Estate Lead Management",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1117",
+  "theme_color": "#10b981",
+  "icons": [
+    { "src": "/icons/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml" },
+    { "src": "/icons/icon-512.svg", "sizes": "512x512", "type": "image/svg+xml" }
+  ]
+}
