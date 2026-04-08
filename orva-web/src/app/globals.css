@@ -52,6 +52,16 @@ body {
   background: var(--muted);
 }
 
+/* Prevent horizontal overflow on mobile */
+html {
+  overflow-x: hidden;
+}
+
+/* Safe area padding for notched phones */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 /* Table horizontal scroll on mobile */
 .table-scroll {
   overflow-x: auto;

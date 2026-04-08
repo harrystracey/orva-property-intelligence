@@ -57,17 +57,17 @@ export function LeadTable({
     <div className="flex flex-col rounded-xl border border-border bg-card">
       {/* Table */}
       <div className="table-scroll">
-        <table className="w-full min-w-[800px] text-sm">
+        <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wider text-muted">
               <th className="sticky left-0 z-10 bg-card px-4 py-3">Owner</th>
               <th className="px-4 py-3">Building</th>
               <th className="px-3 py-3">Unit</th>
               <th className="px-3 py-3">Beds</th>
-              <th className="px-3 py-3">Size</th>
+              <th className="hidden md:table-cell px-3 py-3">Size</th>
               <th className="px-3 py-3">Phone</th>
-              <th className="px-3 py-3">Date</th>
-              <th className="px-3 py-3">Score</th>
+              <th className="hidden md:table-cell px-3 py-3">Date</th>
+              <th className="hidden md:table-cell px-3 py-3">Score</th>
             </tr>
           </thead>
           <tbody>
@@ -93,7 +93,7 @@ export function LeadTable({
                   <td className="sticky left-0 z-10 bg-card px-4 py-2.5 font-medium text-foreground hover:bg-card-hover">
                     <div className="flex items-center gap-2">
                       <User size={14} className="shrink-0 text-muted" />
-                      <span className="truncate max-w-[180px]">
+                      <span className="truncate max-w-[120px] sm:max-w-[180px]">
                         {lead.owner_name || "--"}
                       </span>
                     </div>
@@ -101,7 +101,7 @@ export function LeadTable({
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-1.5">
                       <Building2 size={14} className="shrink-0 text-muted" />
-                      <span className="truncate max-w-[160px]">
+                      <span className="truncate max-w-[100px] sm:max-w-[160px]">
                         {lead.building_name || "--"}
                       </span>
                     </div>
@@ -112,7 +112,7 @@ export function LeadTable({
                   <td className="px-3 py-2.5">
                     <BedroomBadge bedrooms={lead.bedrooms} />
                   </td>
-                  <td className="px-3 py-2.5 text-xs text-muted">
+                  <td className="hidden md:table-cell px-3 py-2.5 text-xs text-muted">
                     {lead.size_sqft
                       ? `${Math.round(lead.size_sqft).toLocaleString()} sqft`
                       : "--"}
@@ -129,10 +129,10 @@ export function LeadTable({
                       <span className="text-xs text-muted">--</span>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-xs text-muted">
+                  <td className="hidden md:table-cell px-3 py-2.5 text-xs text-muted">
                     {lead.date || "--"}
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="hidden md:table-cell px-3 py-2.5">
                     <CompletenessBar value={lead.completeness} />
                   </td>
                 </tr>
@@ -152,7 +152,7 @@ export function LeadTable({
             <button
               onClick={() => onPageChange(page - 1)}
               disabled={page <= 1}
-              className="rounded-lg p-1.5 text-muted hover:bg-card-hover hover:text-foreground disabled:opacity-30"
+              className="rounded-lg p-2.5 text-muted hover:bg-card-hover hover:text-foreground disabled:opacity-30"
             >
               <ChevronLeft size={18} />
             </button>
@@ -173,7 +173,7 @@ export function LeadTable({
                 <button
                   key={pageNum}
                   onClick={() => onPageChange(pageNum)}
-                  className={`flex h-8 min-w-8 items-center justify-center rounded-lg text-xs font-medium ${
+                  className={`flex h-10 min-w-10 items-center justify-center rounded-lg text-xs font-medium ${
                     pageNum === page
                       ? "bg-accent text-white"
                       : "text-muted hover:bg-card-hover hover:text-foreground"
@@ -187,7 +187,7 @@ export function LeadTable({
             <button
               onClick={() => onPageChange(page + 1)}
               disabled={page >= totalPages}
-              className="rounded-lg p-1.5 text-muted hover:bg-card-hover hover:text-foreground disabled:opacity-30"
+              className="rounded-lg p-2.5 text-muted hover:bg-card-hover hover:text-foreground disabled:opacity-30"
             >
               <ChevronRight size={18} />
             </button>

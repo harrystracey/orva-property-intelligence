@@ -245,12 +245,12 @@ export function Navbar() {
       )}
 
       {/* Mobile bottom navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 z-30 flex md:hidden items-center justify-around border-t border-border bg-card py-2">
+      <nav className="fixed bottom-0 left-0 right-0 z-30 flex md:hidden items-center justify-around border-t border-border bg-card py-2 safe-bottom">
         {mobileItems.map((item) => (
           <Link
             key={item.href}
             href={item.href}
-            className={`flex flex-col items-center gap-0.5 px-2 py-1 ${
+            className={`flex flex-col items-center justify-center gap-0.5 min-h-[48px] min-w-[48px] px-1 py-1.5 ${
               isActive(item.href) ? "text-accent" : "text-muted"
             }`}
           >

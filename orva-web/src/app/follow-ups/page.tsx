@@ -174,7 +174,7 @@ export default function FollowUpsPage() {
                   <div className="flex items-center gap-1 shrink-0">
                     <button
                       onClick={() => router.push(`/client/${r.client_id}`)}
-                      className="rounded p-1.5 text-muted hover:text-accent"
+                      className="rounded p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-muted hover:text-accent"
                       title="View profile"
                     >
                       <ArrowRight size={14} />
@@ -182,7 +182,7 @@ export default function FollowUpsPage() {
                     {r.status !== "done" && (
                       <button
                         onClick={() => handleDone(r.id)}
-                        className="rounded p-1.5 text-muted hover:text-success"
+                        className="rounded p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-muted hover:text-success"
                         title="Mark done"
                       >
                         <Check size={14} />
@@ -190,7 +190,7 @@ export default function FollowUpsPage() {
                     )}
                     <button
                       onClick={() => handleDelete(r.id)}
-                      className="rounded p-1.5 text-muted hover:text-danger"
+                      className="rounded p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-muted hover:text-danger"
                       title="Delete"
                     >
                       <Trash2 size={14} />

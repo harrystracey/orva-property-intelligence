@@ -52,7 +52,7 @@ export function FilterPanel({
   return (
     <div className="rounded-xl border border-border bg-card">
       {/* Header row — always visible */}
-      <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+      <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 sm:gap-3 px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <SlidersHorizontal size={16} className="text-accent" />
           Filters
@@ -70,7 +70,7 @@ export function FilterPanel({
           value={filters.owner_name || ""}
           onChange={(e) => update({ owner_name: e.target.value })}
           onKeyDown={handleKeyDown}
-          className={`${inputClass} max-w-48`}
+          className={`${inputClass} w-full sm:w-auto sm:min-w-[140px] sm:max-w-48`}
         />
         <input
           type="text"
@@ -78,12 +78,12 @@ export function FilterPanel({
           value={filters.building_search || ""}
           onChange={(e) => update({ building_search: e.target.value })}
           onKeyDown={handleKeyDown}
-          className={`${inputClass} max-w-40`}
+          className={`${inputClass} w-full sm:w-auto sm:min-w-[120px] sm:max-w-40`}
         />
         <select
           value={filters.bedrooms || ""}
           onChange={(e) => update({ bedrooms: e.target.value || undefined })}
-          className={`${inputClass} max-w-28`}
+          className={`${inputClass} w-full sm:w-auto sm:max-w-28`}
         >
           <option value="">All beds</option>
           <option value="Studio">Studio</option>
@@ -96,30 +96,32 @@ export function FilterPanel({
 
         <button
           onClick={onSearch}
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+          className="w-full sm:w-auto rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
         >
           Search
         </button>
 
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="ml-auto flex items-center gap-1 rounded-lg px-2 py-2 text-sm text-muted hover:text-foreground"
-        >
-          {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          <span className="hidden sm:inline">
-            {expanded ? "Less" : "More"}
-          </span>
-        </button>
-
-        {activeCount > 0 && (
+        <div className="flex gap-2 sm:ml-auto">
           <button
-            onClick={reset}
+            onClick={() => setExpanded(!expanded)}
             className="flex items-center gap-1 rounded-lg px-2 py-2 text-sm text-muted hover:text-foreground"
           >
-            <RotateCw size={14} />
-            <span className="hidden sm:inline">Reset</span>
+            {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            <span className="hidden sm:inline">
+              {expanded ? "Less" : "More"}
+            </span>
           </button>
-        )}
+
+          {activeCount > 0 && (
+            <button
+              onClick={reset}
+              className="flex items-center gap-1 rounded-lg px-2 py-2 text-sm text-muted hover:text-foreground"
+            >
+              <RotateCw size={14} />
+              <span className="hidden sm:inline">Reset</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Expanded filters */}

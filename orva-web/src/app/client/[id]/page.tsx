@@ -264,8 +264,8 @@ export default function ClientProfilePage() {
                   <th className="pb-2 pr-4">Unit</th>
                   <th className="pb-2 pr-4">Beds</th>
                   <th className="pb-2 pr-4">Size</th>
-                  <th className="pb-2 pr-4">Date</th>
-                  <th className="pb-2">Value</th>
+                  <th className="hidden sm:table-cell pb-2 pr-4">Date</th>
+                  <th className="hidden sm:table-cell pb-2">Value</th>
                 </tr>
               </thead>
               <tbody>
@@ -275,8 +275,8 @@ export default function ClientProfilePage() {
                     <td className="py-2 pr-4 font-mono text-xs">{p.unit_number || "--"}</td>
                     <td className="py-2 pr-4">{p.bedrooms !== null ? (p.bedrooms === 0 ? "S" : p.bedrooms) : "--"}</td>
                     <td className="py-2 pr-4 text-muted">{p.size_sqft ? `${Math.round(p.size_sqft).toLocaleString()}` : "--"}</td>
-                    <td className="py-2 pr-4 text-muted">{formatDate(p.date)}</td>
-                    <td className="py-2 text-muted">
+                    <td className="hidden sm:table-cell py-2 pr-4 text-muted">{formatDate(p.date)}</td>
+                    <td className="hidden sm:table-cell py-2 text-muted">
                       {p.transaction_value ? `AED ${Math.round(p.transaction_value).toLocaleString()}` : "--"}
                     </td>
                   </tr>
@@ -457,13 +457,13 @@ export default function ClientProfilePage() {
                         <div className="flex gap-1">
                           <button
                             onClick={() => { setEditingNote(note.id); setEditNoteText(note.text); }}
-                            className="rounded p-1 text-muted hover:text-foreground"
+                            className="rounded p-2 text-muted hover:text-foreground"
                           >
                             <Pencil size={12} />
                           </button>
                           <button
                             onClick={() => handleDeleteNote(note.id)}
-                            className="rounded p-1 text-muted hover:text-danger"
+                            className="rounded p-2 text-muted hover:text-danger"
                           >
                             <Trash2 size={12} />
                           </button>
@@ -509,7 +509,7 @@ export default function ClientProfilePage() {
                     {r.status !== "done" && (
                       <button
                         onClick={() => handleMarkDone(r.id)}
-                        className="ml-2 rounded p-1 text-muted hover:text-success"
+                        className="ml-2 rounded p-2 text-muted hover:text-success"
                         title="Mark done"
                       >
                         <Check size={14} />

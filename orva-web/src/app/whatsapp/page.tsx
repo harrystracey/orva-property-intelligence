@@ -156,7 +156,7 @@ function ConnectionStatus() {
               <img
                 src={`data:image/png;base64,${status.qr_b64}`}
                 alt="WhatsApp QR"
-                className="h-48 w-48 rounded-lg"
+                className="h-40 w-40 sm:h-48 sm:w-48 max-w-full rounded-lg"
               />
             </div>
           )}
@@ -500,15 +500,15 @@ function CampaignTab() {
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-sm font-medium text-foreground">Queue -- {queue.length} contacts</h3>
             <div className="flex gap-2">
-              <button onClick={selectAll} className="text-xs text-accent hover:underline">Select all</button>
-              <button onClick={deselectAll} className="text-xs text-muted hover:underline">Deselect all</button>
+              <button onClick={selectAll} className="text-sm py-1 px-2 text-accent hover:underline">Select all</button>
+              <button onClick={deselectAll} className="text-sm py-1 px-2 text-muted hover:underline">Deselect all</button>
             </div>
           </div>
           <div className="max-h-64 space-y-1 overflow-y-auto">
             {queue.map((c) => (
               <label
                 key={c.phone}
-                className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-card-hover"
+                className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-card-hover"
               >
                 <input
                   type="checkbox"
@@ -571,7 +571,7 @@ function CampaignTab() {
           )}
 
           {/* Counter cards */}
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
             <div className="rounded-lg bg-background p-2 text-center">
               <div className="text-lg font-bold text-accent">{progress.sent}</div>
               <div className="text-xs text-muted">Sent</div>
@@ -636,7 +636,7 @@ function StatsTab() {
       {rows.map((row) => (
         <div key={row.label} className="rounded-xl border border-border bg-card p-4">
           <h3 className="mb-3 text-sm font-medium text-foreground">{row.label}</h3>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
             <div className="rounded-lg bg-background p-3 text-center">
               <div className="text-xl font-bold text-accent">{row.data.sent}</div>
               <div className="text-xs text-muted">Sent</div>
@@ -750,14 +750,14 @@ function MessageLogTab() {
 
       {/* Table */}
       <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full min-w-[700px] text-sm">
+        <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-card">
               <th className="px-3 py-2 text-left text-xs font-medium text-muted">Time</th>
               <th className="px-3 py-2 text-left text-xs font-medium text-muted">Name</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-muted">Building</th>
+              <th className="hidden sm:table-cell px-3 py-2 text-left text-xs font-medium text-muted">Building</th>
               <th className="px-3 py-2 text-left text-xs font-medium text-muted">Phone</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-muted">Template</th>
+              <th className="hidden sm:table-cell px-3 py-2 text-left text-xs font-medium text-muted">Template</th>
               <th className="px-3 py-2 text-left text-xs font-medium text-muted">Status</th>
             </tr>
           </thead>
@@ -773,9 +773,9 @@ function MessageLogTab() {
                     {m.timestamp ? new Date(m.timestamp).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "--"}
                   </td>
                   <td className="px-3 py-2 text-foreground">{m.owner_name || "--"}</td>
-                  <td className="px-3 py-2 text-muted">{m.building || "--"}</td>
+                  <td className="hidden sm:table-cell px-3 py-2 text-muted">{m.building || "--"}</td>
                   <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-muted">{m.phone || "--"}</td>
-                  <td className="px-3 py-2 text-xs text-muted">{m.template_type || "--"}</td>
+                  <td className="hidden sm:table-cell px-3 py-2 text-xs text-muted">{m.template_type || "--"}</td>
                   <td className={`px-3 py-2 text-xs font-medium ${statusColor(m.status)}`}>
                     {m.status === "sent" && <CheckCheck size={13} className="inline mr-1" />}
                     {m.status === "failed" && <XCircle size={13} className="inline mr-1" />}

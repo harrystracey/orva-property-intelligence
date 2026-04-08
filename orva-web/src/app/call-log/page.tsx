@@ -89,7 +89,7 @@ export default function CallLogPage() {
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-5 gap-2">
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
         {outcomes.map((o) => (
           <button
             key={o}
@@ -161,7 +161,7 @@ export default function CallLogPage() {
                 <span className="text-[11px] text-muted hidden sm:inline">{formatDateTime(c.called_at)}</span>
                 <button
                   onClick={() => router.push(`/client/${c.client_id}`)}
-                  className="rounded p-1.5 text-muted hover:text-accent"
+                  className="rounded p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-muted hover:text-accent"
                   title="View profile"
                 >
                   <ArrowRight size={14} />
