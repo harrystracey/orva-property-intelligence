@@ -61,6 +61,7 @@ const NAV_ITEMS: NavItem[] = [
     href: "/chat",
     label: "HLM",
     icon: <Bot size={18} />,
+    mobileNav: true,
   },
   {
     href: "/bayut",
@@ -71,7 +72,6 @@ const NAV_ITEMS: NavItem[] = [
     href: "/client-match",
     label: "Match",
     icon: <Crosshair size={18} />,
-    mobileNav: true,
   },
 ];
 

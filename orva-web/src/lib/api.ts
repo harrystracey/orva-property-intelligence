@@ -435,3 +435,111 @@ export interface HealthResponse {
 export async function getHealth(): Promise<HealthResponse> {
   return request<HealthResponse>("/api/health");
 }
+
+// --- Chat (HLM Intelligence) ---
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  timestamp?: string;
+}
+
+export interface ChatListItem {
+  id: string;
+  name: string;
+  last_updated: string;
+  message_count: number;
+}
+
+export async function getChatList(): Promise<ChatListItem[]> {
+  const res = await request<{ chats: ChatListItem[] }>("/api/chat/list");
+  return res.chats;
+}
+
+export async function getChatHistory(
+  chatId: string
+): Promise<{ chat_id: string; name: string; messages: ChatMessage[] }> {
+  return request(`/api/chat/${chatId}/history`);
+}
+
+export async function createNewChat(): Promise<{ chat_id: string }> {
+  return request("/api/chat/new", { method: "POST" });
+}
+
+export async function deleteChat(chatId: string): Promise<void> {
+  await request(`/api/chat/${chatId}`, { method: "DELETE" });
+}
+
+/**
+ * Send a message to HLM via SSE (POST-based streaming).
+ * Returns an AbortController to cancel the request.
+ */
+export function sendChatMessage(
+  message: string,
+  chatId: string | null,
+  onStatus: (text: string) => void,
+  onDone: (content: string, chatId: string) => void,
+  onError: (error: string) => void
+): AbortController {
+  const controller = new AbortController();
+  const token = getToken();
+
+  (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/chat/send`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ message, chat_id: chatId }),
+        signal: controller.signal,
+      });
+
+      if (res.status === 401) {
+        clearToken();
+        if (typeof window !== "undefined") window.location.reload();
+        return;
+      }
+
+      if (!res.ok) {
+        onError(`Server error (${res.status})`);
+        return;
+      }
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            if (event.type === "status") {
+              onStatus(event.text);
+            } else if (event.type === "done") {
+              onDone(event.content, event.chat_id);
+            } else if (event.type === "error") {
+              onError(event.text);
+            }
+          } catch {
+            /* ignore parse errors */
+          }
+        }
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "AbortError") return;
+      onError("Connection lost. Please try again.");
+    }
+  })();
+
+  return controller;
+}

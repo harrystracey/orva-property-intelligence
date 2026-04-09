@@ -16,7 +16,7 @@ if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
 
 from .deps import data_store
-from .routers import auth, leads, clients, whatsapp
+from .routers import auth, leads, clients, whatsapp, chat
 
 
 @asynccontextmanager
@@ -44,6 +44,8 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://YOUR_SERVER_IP",
         "http://YOUR_SERVER_IP:3000",
+        "https://orvauae.com",
+        "http://orvauae.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -55,6 +57,7 @@ app.include_router(auth.router)
 app.include_router(leads.router)
 app.include_router(clients.router)
 app.include_router(whatsapp.router)
+app.include_router(chat.router)
 
 
 @app.get("/api/health")
