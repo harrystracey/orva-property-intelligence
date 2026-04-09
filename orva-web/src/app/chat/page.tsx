@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { LoginForm } from "@/components/login-form";
 import {
   sendChatMessage,
   getChatList,
@@ -126,6 +126,7 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
 
 export default function ChatPage() {
   const { authenticated } = useAuth();
+  const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatId, setChatId] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -226,7 +227,7 @@ export default function ChatPage() {
     }
   };
 
-  if (!authenticated) return <LoginForm />;
+  if (!authenticated) { router.replace("/"); return null; }
 
   const isEmpty = messages.length === 0;
 

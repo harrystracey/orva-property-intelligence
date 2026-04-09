@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { LoginForm } from "@/components/login-form";
+
 import { getAllReminders, markReminderDone, deleteReminder, ReminderRecord } from "@/lib/api";
 import { CalendarClock, Check, Trash2, Clock, ArrowRight } from "lucide-react";
 import { SkeletonReminderCard } from "@/components/skeleton";
@@ -51,7 +51,7 @@ export default function FollowUpsPage() {
     if (authenticated) refresh();
   }, [authenticated, refresh]);
 
-  if (!authenticated) return <LoginForm />;
+  if (!authenticated) { router.replace("/"); return null; }
 
   const handleDone = async (id: string) => {
     await markReminderDone(id);

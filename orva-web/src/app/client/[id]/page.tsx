@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { LoginForm } from "@/components/login-form";
+
 import {
   getClientProfile,
   addNote,
@@ -123,7 +123,7 @@ export default function ClientProfilePage() {
     if (authenticated && clientId) refresh();
   }, [authenticated, clientId, refresh]);
 
-  if (!authenticated) return <LoginForm />;
+  if (!authenticated) { router.replace("/"); return null; }
 
   if (loading) {
     return (

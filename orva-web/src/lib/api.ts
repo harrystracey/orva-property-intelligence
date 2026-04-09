@@ -42,7 +42,7 @@ async function request<T>(
   if (res.status === 401) {
     clearToken();
     if (typeof window !== "undefined") {
-      window.location.reload();
+      window.location.href = "/";
     }
     throw new Error("Unauthorized");
   }

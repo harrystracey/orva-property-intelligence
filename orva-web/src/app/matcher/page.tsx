@@ -1,12 +1,13 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { LoginForm } from "@/components/login-form";
 import { Crosshair } from "lucide-react";
 
 export default function MatcherPage() {
   const { authenticated } = useAuth();
-  if (!authenticated) return <LoginForm />;
+  const router = useRouter();
+  if (!authenticated) { router.replace("/"); return null; }
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 pb-20 md:pb-4">

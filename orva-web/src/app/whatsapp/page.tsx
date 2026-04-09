@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { LoginForm } from "@/components/login-form";
 import {
   getWAStatus,
   previewCampaign,
@@ -869,9 +869,10 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
 
 export default function WhatsAppPage() {
   const { authenticated } = useAuth();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("campaign");
 
-  if (!authenticated) return <LoginForm />;
+  if (!authenticated) { router.replace("/"); return null; }
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4 pb-20 md:pb-4 max-w-5xl mx-auto w-full">

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { LoginForm } from "@/components/login-form";
+
 import { getAllCalls, CallRecord } from "@/lib/api";
 import { Phone, ArrowRight, Search } from "lucide-react";
 import { SkeletonCallEntry } from "@/components/skeleton";
@@ -60,7 +60,7 @@ export default function CallLogPage() {
     if (authenticated) refresh();
   }, [authenticated, refresh]);
 
-  if (!authenticated) return <LoginForm />;
+  if (!authenticated) { router.replace("/"); return null; }
 
   const filtered = calls.filter((c) => {
     if (outcomeFilter !== "all" && c.outcome !== outcomeFilter) return false;
