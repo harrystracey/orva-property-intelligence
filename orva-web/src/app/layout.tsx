@@ -30,7 +30,7 @@ export const metadata: Metadata = {
     title: "ORVA",
   },
   other: {
-    "theme-color": "#10b981",
+    "theme-color": "#faf9f6",
     "apple-mobile-web-app-capable": "yes",
   },
 };

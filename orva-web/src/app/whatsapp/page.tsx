@@ -551,9 +551,9 @@ function CampaignTab() {
             <h3 className="text-sm font-medium text-foreground">Campaign Progress</h3>
             <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
               progress.status === "running" || progress.status === "paused" ? "bg-accent/15 text-accent" :
-              progress.status === "done" ? "bg-green-500/15 text-green-400" :
+              progress.status === "done" ? "bg-success/15 text-success" :
               progress.status === "error" ? "bg-danger/15 text-danger" :
-              progress.status === "stopped" ? "bg-yellow-500/15 text-yellow-400" :
+              progress.status === "stopped" ? "bg-warning/15 text-warning" :
               "bg-muted/15 text-muted"
             }`}>
               {progress.status === "paused" ? "Batch pause" : progress.status}
@@ -581,7 +581,7 @@ function CampaignTab() {
               <div className="text-xs text-muted">Failed</div>
             </div>
             <div className="rounded-lg bg-background p-2 text-center">
-              <div className="text-lg font-bold text-yellow-400">{progress.not_on_wa}</div>
+              <div className="text-lg font-bold text-warning">{progress.not_on_wa}</div>
               <div className="text-xs text-muted">Not on WA</div>
             </div>
             <div className="rounded-lg bg-background p-2 text-center">
@@ -646,11 +646,11 @@ function StatsTab() {
               <div className="text-xs text-muted">Failed</div>
             </div>
             <div className="rounded-lg bg-background p-3 text-center">
-              <div className="text-xl font-bold text-yellow-400">{row.data.not_on_whatsapp}</div>
+              <div className="text-xl font-bold text-warning">{row.data.not_on_whatsapp}</div>
               <div className="text-xs text-muted">Not on WA</div>
             </div>
             <div className="rounded-lg bg-background p-3 text-center">
-              <div className="text-xl font-bold text-blue-400">{row.data.replies}</div>
+              <div className="text-xl font-bold text-accent">{row.data.replies}</div>
               <div className="text-xs text-muted">Replies</div>
             </div>
             <div className="rounded-lg bg-background p-3 text-center">
@@ -714,7 +714,7 @@ function MessageLogTab() {
   const statusColor = (s: string | null) => {
     if (s === "sent") return "text-accent";
     if (s === "failed") return "text-danger";
-    if (s === "not_on_whatsapp") return "text-yellow-400";
+    if (s === "not_on_whatsapp") return "text-warning";
     return "text-muted";
   };
 

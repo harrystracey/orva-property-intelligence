@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { LoginForm } from "@/components/login-form";
+import { LandingPage } from "@/components/landing-page";
 import { FilterPanel } from "@/components/filter-panel";
 import { LeadTable } from "@/components/lead-table";
 import { searchLeads, lookupClientId, LeadFilters, LeadSearchResponse, LeadRecord } from "@/lib/api";
@@ -82,7 +82,7 @@ export default function LeadSearchPage() {
   };
 
   if (!authenticated) {
-    return <LoginForm />;
+    return <LandingPage />;
   }
 
   return (
