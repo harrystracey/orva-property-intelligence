@@ -20,7 +20,14 @@ try:
 except ImportError:
     UNIT_REGISTRY_AVAILABLE = False
 
-# Import building intelligence module for fuzzy matching
+# Import building intelligence module for fuzzy matching.
+# Deliberately do NOT import BUILDING_ALIASES from building_intelligence here:
+# that dict is keyed on canonical names ("The Fairmont Palm Residences" -> list
+# of display variations) and is consumed by app.py / listing_matcher.
+# The BUILDING_ALIASES defined below is a *different* dict, keyed on lowercase
+# short names ("fairmont" -> list of lowercase alternates) and is used for
+# fuzzy substring matching inside standardize_building_name(). Keeping them
+# separate avoids breaking the canonical-name consumers.
 try:
     from building_intelligence import (
         resolve_building_name,
@@ -31,8 +38,7 @@ try:
         calculate_data_age,
         get_shoreline_info,
         SHORELINE_TOWER_MAPPING,
-        BUILDING_ALIASES,
-        BUILDING_SPECS
+        BUILDING_SPECS,
     )
     BUILDING_INTELLIGENCE_AVAILABLE = True
 except ImportError:
@@ -41,7 +47,8 @@ except ImportError:
 
 
 # =============================================================================
-# BUILDING ALIAS MAPPING SYSTEM - Single source of truth from building_intelligence
+# BUILDING ALIAS MAPPING SYSTEM (local fuzzy-match table, lowercase keys)
+# See note above for why this is separate from building_intelligence.BUILDING_ALIASES.
 # =============================================================================
 
 if BUILDING_INTELLIGENCE_AVAILABLE:

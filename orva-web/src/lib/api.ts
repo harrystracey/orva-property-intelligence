@@ -371,14 +371,39 @@ export async function getLinkStatus(account: string): Promise<{ pending: boolean
   return request(`/api/whatsapp/link/status/${account}`);
 }
 
-export async function previewCampaign(params: Record<string, unknown>): Promise<CampaignPreviewResponse> {
+// Mirrors orva_api/schemas/whatsapp.py CampaignPreviewRequest. Keep in sync
+// when backend fields change.
+export interface CampaignPreviewParams {
+  campaign_type: string;
+  building?: string;
+  bedrooms?: string;
+  area?: string;
+  days_ahead?: number;
+  portfolio_only?: boolean;
+  min_units?: number;
+  limit?: number;
+  lead_type?: string;
+  not_yet_contacted?: boolean;
+  custom_message?: string;
+  account?: string;
+}
+
+// Mirrors orva_api/schemas/whatsapp.py CampaignStartRequest.
+export interface CampaignStartParams extends CampaignPreviewParams {
+  dry_run?: boolean;
+  override_limit?: boolean;
+  no_limits?: boolean;
+  excluded_phones?: string[];
+}
+
+export async function previewCampaign(params: CampaignPreviewParams): Promise<CampaignPreviewResponse> {
   return request<CampaignPreviewResponse>("/api/whatsapp/campaign/preview", {
     method: "POST",
     body: JSON.stringify(params),
   });
 }
 
-export async function startCampaign(params: Record<string, unknown>): Promise<void> {
+export async function startCampaign(params: CampaignStartParams): Promise<void> {
   await request("/api/whatsapp/campaign/start", {
     method: "POST",
     body: JSON.stringify(params),

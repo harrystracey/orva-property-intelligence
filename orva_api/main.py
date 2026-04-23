@@ -5,17 +5,14 @@ Imports existing Python modules directly (data_processor, building_intelligence,
 
 import logging
 import os
-import sys
-from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Ensure project root is importable
-_root = Path(__file__).resolve().parent.parent
-if str(_root) not in sys.path:
-    sys.path.insert(0, str(_root))
+# Importing _sys_paths puts PROJECT_ROOT and whatsapp_bot/ on sys.path so
+# every downstream module can import data_processor, whatsapp_bot, etc.
+from . import _sys_paths  # noqa: F401
 
 # Configure root logger once. LOG_LEVEL env override lets ops raise to DEBUG
 # in staging or drop to WARNING when stdout is noisy. format keeps a single

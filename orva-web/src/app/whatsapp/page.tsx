@@ -18,6 +18,7 @@ import {
   WAStatus,
   QueueContact,
   CampaignProgress,
+  CampaignPreviewParams,
   SendStats,
   MessageLogEntry,
 } from "@/lib/api";
@@ -240,7 +241,7 @@ function CampaignTab() {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [pollProgress]);
 
-  const buildParams = () => ({
+  const buildParams = (): CampaignPreviewParams => ({
     campaign_type: campaignType,
     building: building || undefined,
     bedrooms: bedrooms || undefined,

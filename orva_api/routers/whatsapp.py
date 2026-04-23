@@ -1,19 +1,12 @@
 """WhatsApp campaign management API -- proxies to wa-1/wa-2, runs campaigns."""
 
 import asyncio
-import sys
-from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 
-# Ensure project root + whatsapp_bot are importable
-_root = Path(__file__).resolve().parent.parent.parent
-_wa = _root / "whatsapp_bot"
-for p in [str(_root), str(_wa)]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
+from .. import _sys_paths  # noqa: F401 -- puts project root + whatsapp_bot on sys.path
 
 from whatsapp_bot.message_log import (
     get_recent_messages,

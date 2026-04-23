@@ -5,17 +5,10 @@ Imports existing whatsapp_bot modules directly.
 """
 
 import asyncio
-import sys
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 
-# Ensure project root and whatsapp_bot are importable
-_root = Path(__file__).resolve().parent.parent.parent
-_wa = _root / "whatsapp_bot"
-for p in [str(_root), str(_wa)]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
+from .. import _sys_paths  # noqa: F401 -- puts project root + whatsapp_bot on sys.path
 
 from whatsapp_bot.campaign_manager import (
     build_landlord_lease_expiry_queue,

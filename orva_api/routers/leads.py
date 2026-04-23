@@ -2,16 +2,11 @@
 
 import io
 import math
-import sys
-from pathlib import Path
 
 import pandas as pd
 from fastapi import APIRouter, Depends, Query, Response
 
-# Ensure project root is importable
-_root = Path(__file__).resolve().parent.parent.parent
-if str(_root) not in sys.path:
-    sys.path.insert(0, str(_root))
+from .. import _sys_paths  # noqa: F401 -- puts project root on sys.path
 
 from data_processor import apply_filters  # noqa: E402
 

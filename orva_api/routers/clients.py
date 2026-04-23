@@ -1,14 +1,10 @@
 """Client data API — notes, reminders, call log, profile."""
 
-import sys
-from pathlib import Path
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 
-_root = Path(__file__).resolve().parent.parent.parent
-if str(_root) not in sys.path:
-    sys.path.insert(0, str(_root))
+from .. import _sys_paths  # noqa: F401 -- puts project root on sys.path
 
 from client_data_manager import (  # noqa: E402
     make_client_id,
@@ -131,24 +127,11 @@ def get_client_profile(
     """Get full client profile: lead info + notes + reminders + calls + portfolio."""
     df = store.leads_df
 
-    # Build a lookup column for client_id matching
-    # Pre-compute for the specific client_id to avoid iterating 78K rows
-    match = None
-    owner_name_val = None
-
-    for _, row in df.iterrows():
-        rid = make_client_id(
-            name=row.get("owner_name"),
-            building=row.get("building_name"),
-            unit=row.get("unit_number"),
-        )
-        if rid == client_id:
-            match = row
-            owner_name_val = row.get("owner_name") if pd.notna(row.get("owner_name")) else None
-            break
-
+    # O(1) lookup via the index precomputed in DataStore.load()
+    match = store.find_client_row(client_id)
     if match is None:
         raise HTTPException(status_code=404, detail="Client not found")
+    owner_name_val = match.get("owner_name") if pd.notna(match.get("owner_name")) else None
 
     # Portfolio: all properties by this owner
     portfolio = []

@@ -3,16 +3,11 @@ Dependency injection for ORVA API.
 Cached data loading — mirrors app.py load_data() logic.
 """
 
-import sys
 import pandas as pd
-from pathlib import Path
 from functools import lru_cache
 
-from .config import PROJECT_ROOT, PARQUET_PATH, PF_CSV_PATH
-
-# Add project root to sys.path so we can import existing modules
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+from .config import PARQUET_PATH, PF_CSV_PATH
+from . import _sys_paths  # noqa: F401 -- puts project root on sys.path
 
 from data_processor import load_reference_data  # noqa: E402
 
@@ -102,15 +97,52 @@ class DataStore:
         self.leads_df: pd.DataFrame = pd.DataFrame()
         self.ref_df: pd.DataFrame = pd.DataFrame()
         self.ref_stats: dict = {}
+        # client_id -> pandas index label. Built once at load so
+        # /api/clients/{id} is O(1) instead of an O(n) scan over 78K rows.
+        self._client_index: dict[str, int] = {}
         self._loaded = False
 
     def load(self):
         self.leads_df = _load_leads_df()
         self.ref_df, self.ref_stats = load_reference_data()
+        self._rebuild_client_index()
         self._loaded = True
 
     def reload(self):
         self.load()
+
+    def _rebuild_client_index(self) -> None:
+        """Rebuild the client_id -> row index lookup. First-write-wins on
+        duplicate ids (which shouldn't happen but we don't want to silently
+        drop them either)."""
+        # Imported here to avoid import cycles at module load
+        from client_data_manager import make_client_id  # noqa: E402
+
+        idx: dict[str, int] = {}
+        if self.leads_df.empty:
+            self._client_index = idx
+            return
+        for row_idx, row in self.leads_df.iterrows():
+            cid = make_client_id(
+                name=row.get("owner_name"),
+                building=row.get("building_name"),
+                unit=row.get("unit_number"),
+            )
+            if cid and cid not in idx:
+                idx[cid] = row_idx
+        self._client_index = idx
+
+    def find_client_row(self, client_id: str):
+        """
+        Return the lead row for a client_id or None.
+
+        Uses the precomputed index built during load(). Previous callers
+        iterated 78K rows on every /api/clients/{id} request.
+        """
+        row_idx = self._client_index.get(client_id)
+        if row_idx is None:
+            return None
+        return self.leads_df.loc[row_idx]
 
     @property
     def is_loaded(self) -> bool:

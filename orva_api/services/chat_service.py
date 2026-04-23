@@ -8,7 +8,6 @@ import time
 import re
 import uuid
 import os
-import sys
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Generator
@@ -17,10 +16,13 @@ import pandas as pd
 import anthropic
 
 from ..config import ANTHROPIC_API_KEY, CHAT_HISTORY_DIR, PROJECT_ROOT, BAYUT_CSV_PATH, RENTALS_CSV_PATH
+from .. import _sys_paths  # noqa: F401 -- puts project root on sys.path
 
-# Ensure project root importable
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+
+# Default to the current latest Sonnet. Override with CLAUDE_MODEL if you need
+# to pin to a specific snapshot, downgrade to Haiku for cheaper runs, or
+# upgrade when a newer model lands, without redeploying code.
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
 
 from data_processor import (  # noqa: E402
     get_complete_building_intel_for_ai,
@@ -757,7 +759,7 @@ def run_chat(
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model=CLAUDE_MODEL,
             max_tokens=8192,
             system=system_prompt,
             tools=TOOLS,
@@ -806,7 +808,7 @@ def run_chat(
 
             # After 2 tools, force text response (no more tool calls)
             response = client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model=CLAUDE_MODEL,
                 max_tokens=8192,
                 system=system_prompt,
                 tools=TOOLS if tool_count < 2 else [],
@@ -830,7 +832,7 @@ def run_chat(
                 api_messages.append({"role": "user", "content": tool_results})
 
                 response = client.messages.create(
-                    model="claude-sonnet-4-20250514",
+                    model=CLAUDE_MODEL,
                     max_tokens=8192,
                     system=system_prompt,
                     tools=[],
