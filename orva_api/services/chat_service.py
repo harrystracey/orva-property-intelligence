@@ -24,13 +24,13 @@ from .. import _sys_paths  # noqa: F401 -- puts project root on sys.path
 # upgrade when a newer model lands, without redeploying code.
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
 
-from data_processor import (  # noqa: E402
+from data_processor import standardize_building_name  # noqa: E402
+from ai_queries import (  # noqa: E402
     get_complete_building_intel_for_ai,
     get_portfolio_summary_for_ai,
     search_building_names_for_ai,
     get_listings_below_market_for_ai,
     get_propertyfinder_listings_for_ai,
-    standardize_building_name,
 )
 from rental_processor import load_rental_data, get_rental_intel_for_ai  # noqa: E402
 
