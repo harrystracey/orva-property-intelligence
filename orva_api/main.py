@@ -15,6 +15,7 @@ _root = Path(__file__).resolve().parent.parent
 if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
 
+from .config import CORS_ORIGINS
 from .deps import data_store
 from .routers import auth, leads, clients, whatsapp, chat
 
@@ -36,17 +37,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow Next.js dev server
+# CORS -- origins come from config.CORS_ORIGINS (env var CORS_ORIGINS).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://YOUR_SERVER_IP",
-        "http://YOUR_SERVER_IP:3000",
-        "https://orvauae.com",
-        "http://orvauae.com",
-    ],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

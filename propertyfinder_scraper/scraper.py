@@ -82,8 +82,9 @@ REPLIT_BASE = "property-scraper-towersdubai.replit.app"
 def ensure_scraped_data_dir():
     SCRAPED_DATA.mkdir(parents=True, exist_ok=True)
     if not OUTPUT_CSV.exists():
-        with open(OUTPUT_CSV, "w", encoding="utf-8") as f:
-            f.write(",".join(CSV_HEADERS) + "\n")
+        with open(OUTPUT_CSV, "w", encoding="utf-8", newline="") as f:
+            writer = csv.writer(f, quoting=csv.QUOTE_ALL)
+            writer.writerow(CSV_HEADERS)
 
 
 def load_already_scraped_urls() -> set:
@@ -104,8 +105,11 @@ def load_already_scraped_urls() -> set:
             for row in reader:
                 if len(row) > idx and row[idx].strip():
                     urls.add(row[idx].strip())
-    except Exception:
-        pass
+    except Exception as e:
+        # If we can't read the dedup cache the scraper would silently re-hit
+        # the paid Replit endpoint for every already-scraped URL. Logging the
+        # failure surfaces the cost risk instead of burying it.
+        print(f"[PF] load_already_scraped_urls failed: {e}; dedup cache empty")
     return urls
 
 
@@ -133,8 +137,8 @@ def load_already_scraped_properties() -> set:
                     owner = row[owner_idx].strip()
                     if unit and building and owner:
                         properties.add((unit, building, owner))
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[PF] load_already_scraped_properties failed: {e}; property dedup cache empty")
     return properties
 
 
@@ -611,11 +615,23 @@ class PropertyFinderScraper:
         return None
 
     def save_to_csv(self, row: Dict):
-        """Append one row to propertyfinder_scraped_leads.csv. Flush so app can see new rows without restart."""
+        """
+        Append one row to propertyfinder_scraped_leads.csv using proper CSV
+        quoting so embedded commas, newlines, or quote characters in owner
+        names/addresses don't split a row across two lines and corrupt the
+        file. Flush so Streamlit sees new rows without a restart.
+        """
         ensure_scraped_data_dir()
-        values = [str(row.get(h, "")).replace(",", ";") for h in CSV_HEADERS]
-        line = ",".join(values) + "\n"
-        with open(OUTPUT_CSV, "a", encoding="utf-8") as f:
+        values = [str(row.get(h, "")) for h in CSV_HEADERS]
+        # Build the row via csv.writer so quoting is consistent with the header
+        # (QUOTE_ALL wraps every field in double quotes and escapes embedded
+        # quotes). Write in one f.write() call -- a single short append is
+        # atomic on POSIX/NTFS, so we won't truncate the row on crash.
+        import io
+        buf = io.StringIO()
+        csv.writer(buf, quoting=csv.QUOTE_ALL).writerow(values)
+        line = buf.getvalue()
+        with open(OUTPUT_CSV, "a", encoding="utf-8", newline="") as f:
             f.write(line)
             f.flush()
         self.saved_count += 1

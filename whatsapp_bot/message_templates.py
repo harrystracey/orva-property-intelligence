@@ -434,7 +434,10 @@ def generate_message(
     When owner is a management company, first_name is empty and greeting becomes "Hi," not "Hi Company Name,".
     """
     first_name = format_first_name(owner_name) or ""
-    is_corporate = not first_name and owner_name and isinstance(owner_name, str) and owner_name.strip()
+    # Treat any missing first_name as requiring the name-less greeting path, whether
+    # because owner_name is corporate, initials-only, blank, or missing entirely.
+    # Otherwise messages could ship as "Hi , are you..." with a stray space-comma.
+    needs_nameless_greeting = not first_name
 
     # Select template pool (custom overrides from JSON if present)
     if campaign_type == 'landlord_lease_expiry':
@@ -527,8 +530,8 @@ def generate_message(
             bedrooms=bedrooms or '',
             bedrooms_display=bedrooms_display
         )
-    # Corporate/management company or non-name: use time-based greeting without name
-    if is_corporate:
+    # Corporate/management company or any missing-name case: use time-based greeting without name
+    if needs_nameless_greeting:
         # Fix name placeholder artifacts
         for old_g, new_g in [(", ", ", "), (",", ",")]:
             for prefix in ["Hi", "Hey", "Good morning", "Morning", "Good afternoon", "Good evening"]:

@@ -41,6 +41,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUsername(localStorage.getItem("orva_username"));
       setName(localStorage.getItem("orva_name"));
     }
+
+    // Sync auth state across tabs: if a user logs out in another tab
+    // (orva_token cleared), reflect it here too. Without this, a tab
+    // stays authenticated for the full JWT lifetime after logout elsewhere.
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== "orva_token") return;
+      if (e.newValue) {
+        setAuthenticated(true);
+        setUsername(localStorage.getItem("orva_username"));
+        setName(localStorage.getItem("orva_name"));
+      } else {
+        setAuthenticated(false);
+        setUsername(null);
+        setName(null);
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   const login = async (user: string, pass: string) => {

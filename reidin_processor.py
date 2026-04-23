@@ -17,7 +17,26 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-from building_intelligence import standardize_building_name
+
+
+def standardize_building_name(name):
+    """
+    Lazy proxy to data_processor.standardize_building_name.
+
+    The previous direct import (`from building_intelligence import
+    standardize_building_name`) was broken -- the function lives in
+    data_processor, not building_intelligence -- and would raise ImportError
+    as soon as this module loaded. The deferred import avoids a circular
+    dependency (data_processor imports from reidin via the cascade path).
+    """
+    try:
+        from data_processor import standardize_building_name as _impl
+    except Exception:
+        return None
+    try:
+        return _impl(name)
+    except Exception:
+        return None
 
 # ---------------------------------------------------------------------------
 # Column aliases — Reidin exports vary slightly in naming
@@ -48,13 +67,37 @@ def _find_col(df: pd.DataFrame, aliases: list) -> str | None:
 
 
 def _clean_bedrooms(val) -> str | None:
-    """Normalise bedroom values: Studio → 'Studio', integers → string digit."""
+    """
+    Normalise bedroom values. Preserves compound layouts so we don't silently
+    drop the '+' half of a 2+1 / 1+Study / 3+M unit (Reidin is HIGH authority
+    in the bedroom cascade; losing the modifier has caused wrong pitches).
+
+    Mapping:
+      Studio variants (studio, st, s, 0) → "Studio"
+      "2 + 1", "2+1"                     → "2+1"
+      "1 + Study", "1+study"             → "1+Study"
+      "3 + Maid", "3+m"                  → "3+M"
+      "2 BR"                             → "2"
+      anything else with a digit         → "<first-digit>"
+    """
     if pd.isna(val):
         return None
-    s = str(val).strip().lower()
-    if s in ("studio", "st", "s", "0"):
+    s = str(val).strip()
+    s_lower = s.lower()
+    if s_lower in ("studio", "st", "s", "0"):
         return "Studio"
-    m = re.search(r"(\d+)", s)
+    plus = re.match(r"^\s*(\d+)\s*\+\s*([a-zA-Z0-9]+)", s)
+    if plus:
+        digits, modifier = plus.group(1), plus.group(2)
+        if modifier.isdigit():
+            return f"{digits}+{modifier}"
+        m_lower = modifier.lower()
+        if m_lower in ("m", "maid", "maids"):
+            return f"{digits}+M"
+        if m_lower in ("s", "study"):
+            return f"{digits}+Study"
+        return f"{digits}+{modifier.capitalize()}"
+    m = re.search(r"(\d+)", s_lower)
     if m:
         return m.group(1)
     return None

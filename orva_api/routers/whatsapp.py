@@ -29,7 +29,7 @@ def _get_reply_stats(days=None):
     except Exception:
         return {"replied": 0}
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_user_from_request
 from ..config import WA_HOST_1, WA_HOST_2
 from ..schemas.whatsapp import (
     CampaignPreviewRequest,
@@ -171,9 +171,17 @@ async def stop_campaign(user: dict = Depends(get_current_user)):
 @router.get("/campaign/progress")
 async def campaign_progress_sse(
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(get_user_from_request),
 ):
-    """SSE stream of campaign progress. Yields JSON every 1s."""
+    """
+    SSE stream of campaign progress. Yields JSON every 1s.
+
+    Accepts auth via the standard Authorization: Bearer header OR via a
+    `?token=...` query param, because browser EventSource cannot attach
+    custom headers. New clients should prefer the header (use fetch +
+    ReadableStream) -- passing the token in the URL leaks into server
+    logs and Referer headers.
+    """
     from sse_starlette.sse import EventSourceResponse
 
     async def event_generator():

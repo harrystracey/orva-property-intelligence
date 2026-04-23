@@ -121,7 +121,6 @@ class RateLimiter:
         self.last_template_type = None
         self.template_repeat_count = 0
         self.override_limit = override_limit
-        self._override_sent_today: Optional[int] = None
         self._cooldown_day: Optional[int] = _cooldown_days_since_restriction()
         self._cooldown_double_delays: bool = self._cooldown_day is not None and self._cooldown_day <= 2
         self._random_daily_cap: int = random.randint(DAILY_CAP_MIN, DAILY_CAP_MAX)
@@ -129,8 +128,15 @@ class RateLimiter:
         self._messages_since_pause: int = 0
 
     def reset(self) -> None:
-        """Set effective sent_today to 0 for this run (used with override_limit to bypass ramp-up)."""
-        self._override_sent_today = 0
+        """
+        Deprecated. Retained as a no-op for backwards compatibility.
+
+        Why: previously this zeroed a session-local counter that overrode the
+        persistent CSV count. Two overlapping override_limit sessions could each
+        start at 0 and together exceed the daily cap -> ban risk. The persistent
+        CSV is now the single source of truth; override_limit still skips ramp-up.
+        """
+        return
 
     def get_daily_cap(self) -> int:
         """Get daily cap. Cooldown/ramp-up override; mature schedule uses 32-38 random."""
@@ -148,13 +154,10 @@ class RateLimiter:
         """
         Check if we can send another message today.
         Returns (can_send: bool, reason: str)
-        When override_limit and reset() were used, _override_sent_today is used instead of log.
+        Reads the persistent CSV as the single source of truth so concurrent
+        sessions cannot each start from 0 and double the cap.
         """
-        today_count = (
-            self._override_sent_today
-            if self._override_sent_today is not None
-            else get_today_send_count()
-        )
+        today_count = get_today_send_count()
         daily_cap = self.get_daily_cap()
         
         if today_count >= daily_cap:
@@ -207,8 +210,6 @@ class RateLimiter:
             self.consecutive_failures = 0
             self.messages_in_current_session += 1
             self._messages_since_pause += 1
-            if self._override_sent_today is not None:
-                self._override_sent_today += 1
         elif status in ('failed', 'not_on_whatsapp'):
             self.consecutive_failures += 1
         

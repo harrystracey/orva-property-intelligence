@@ -213,18 +213,20 @@ async def run_campaign_task(params: CampaignStartRequest):
                 )
                 return
 
-        # 4. Exclusions
+        # 4. Exclusions -- normalize both sides through format_phone_for_whatsapp
+        # so a phone excluded in raw "+971 55 ..." form still matches a
+        # "971551234567" queue entry. Unparseable entries drop to None and
+        # therefore never match.
         if params.excluded_phones:
-            excl = set(params.excluded_phones)
-            queue = [q for q in queue if q.get("phone") not in excl]
+            excl = {n for n in (format_phone_for_whatsapp(p) for p in params.excluded_phones) if n}
+            queue = [q for q in queue if format_phone_for_whatsapp(q.get("phone")) not in excl]
 
         # 5. Shuffle
         queue = shuffle_queue(queue)
 
-        # 6. Rate limiter
+        # 6. Rate limiter -- override_limit skips ramp-up but daily cap still
+        # enforced via persistent message log (see rate_limiter.reset docstring).
         rate_limiter = RateLimiter(override_limit=params.override_limit)
-        if params.override_limit:
-            rate_limiter.reset()
 
         state.progress = CampaignProgress(
             status="running",

@@ -80,8 +80,11 @@ def parse_listings_page(html_content: str, building_name: str) -> List[Dict]:
             elif href.startswith('http'):
                 listing_url = href
         
-        # Only add if we have useful data
-        if bedrooms or size_sqft or unit_type or view:
+        # Require at least one identifier or spec field that the unit registry
+        # cascade can actually use: bedrooms, size_sqft, or unit_type. A row with
+        # only a 'view' is noise and ends up corrupting the Bayut feed into the
+        # registry (Priority 2.6 size-match) with no hook to match a real unit.
+        if bedrooms or size_sqft or unit_type:
             results.append({
                 'building': building_name,
                 'unit_number': unit_number,

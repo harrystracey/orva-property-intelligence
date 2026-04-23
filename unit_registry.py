@@ -10,6 +10,27 @@ from typing import Dict, Optional
 REGISTRY_PATH = Path("data/unit_registry.csv")
 
 
+def _standardize_for_lookup(building) -> str:
+    """
+    Route building names through data_processor.standardize_building_name so
+    Shoreline tower aliases (e.g. 'Al Masalli' ↔ 'Shoreline 9'), diacritics, and
+    spacing quirks resolve to the same registry key. Deferred import avoids a
+    circular dependency with data_processor.
+    """
+    raw = str(building).strip()
+    try:
+        from data_processor import standardize_building_name
+    except Exception as e:
+        print(f"[unit_registry] standardize_building_name unavailable ({e}); using raw name {raw!r}")
+        return raw
+    try:
+        b_std = standardize_building_name(raw)
+        return b_std if b_std else raw
+    except Exception as e:
+        print(f"[unit_registry] standardize_building_name raised on {raw!r}: {e}; using raw")
+        return raw
+
+
 def load_unit_registry() -> pd.DataFrame:
     """Load unit registry. Returns empty DataFrame if file missing."""
     try:
@@ -33,13 +54,7 @@ def get_unit_info(building: str, unit: str) -> Optional[Dict]:
     registry = load_unit_registry()
     if registry.empty:
         return None
-    try:
-        from data_processor import standardize_building_name
-        b_std = standardize_building_name(str(building).strip())
-        if b_std:
-            building = b_std
-    except Exception:
-        pass
+    building = _standardize_for_lookup(building)
     # Normalize for matching (remove spaces/dashes)
     b_norm = str(building).strip().lower().replace(" ", "").replace("-", "")
     u_norm = str(unit).strip().upper().replace(" ", "").replace("-", "")
@@ -77,7 +92,8 @@ def get_building_units(building: str, bedrooms: Optional[str] = None) -> pd.Data
     registry = load_unit_registry()
     if registry.empty:
         return pd.DataFrame()
-    
+
+    building = _standardize_for_lookup(building)
     b_norm = str(building).strip().lower().replace(" ", "").replace("-", "")
     registry["_b"] = registry["building_name"].fillna("").astype(str).str.strip().str.lower().str.replace(" ", "").str.replace("-", "")
     

@@ -277,21 +277,36 @@ def get_shoreline_info(tower_identifier):
 # UNIT TYPE VALIDATION
 # =============================================================================
 
+_UNKNOWN_VALIDATION_BUILDINGS: set = set()
+
+
 def validate_unit_type(building_name, unit_type):
     """
     Validate unit type against building specifications.
-    
+
     Returns: (is_valid, message)
+
+    When the building is not in BUILDING_SPECS we cannot actually validate --
+    a nonsense unit type like "Studio" in a 2+3 bed tower would slip through.
+    We return is_valid=True to preserve caller behavior (no false positives)
+    but log once per unknown building so missing coverage becomes visible.
     """
     if not building_name:
         return (True, "Unknown building - cannot validate")
-    
+
     # Resolve building name first
     canonical, _, _ = resolve_building_name(building_name)
     if canonical:
         building_name = canonical
-    
+
     if building_name not in BUILDING_SPECS:
+        if building_name not in _UNKNOWN_VALIDATION_BUILDINGS:
+            _UNKNOWN_VALIDATION_BUILDINGS.add(building_name)
+            print(
+                f"[building_intelligence] validate_unit_type: no BUILDING_SPECS "
+                f"entry for {building_name!r} -- unit types pass through unchecked. "
+                f"Add it to BUILDING_SPECS to catch data errors."
+            )
         return (True, "Building not in validation database")
     
     valid_types = BUILDING_SPECS[building_name]["unit_types"]

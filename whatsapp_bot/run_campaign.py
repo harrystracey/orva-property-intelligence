@@ -134,14 +134,18 @@ async def run_campaign(
         print("[ERROR] Queue is empty after dedup (all phones messaged recently)")
         return
     
-    # Apply manual exclusions from app queue preview
+    # Apply manual exclusions from app queue preview.
+    # Normalize both sides via format_phone_for_whatsapp so "+971 55 ..."
+    # in the exclude list still matches a "971551234567" queue entry.
     if exclude_file:
         import json as _json
+        from bot import format_phone_for_whatsapp as _fpw
         _excl_path = Path(exclude_file) if Path(exclude_file).is_absolute() else Path(__file__).parent / exclude_file
         if _excl_path.exists():
-            _excl_phones = set(_json.loads(_excl_path.read_text(encoding="utf-8")))
+            _raw_excl = _json.loads(_excl_path.read_text(encoding="utf-8"))
+            _excl_normalized = {n for n in (_fpw(p) for p in _raw_excl) if n}
             _before = len(queue)
-            queue = [item for item in queue if item["phone"] not in _excl_phones]
+            queue = [item for item in queue if _fpw(item.get("phone")) not in _excl_normalized]
             print(f"[EXCLUDE] Removed {_before - len(queue)} manually excluded contacts ({len(queue)} remaining)")
     
     # Generate messages (or use single custom message for all)
@@ -205,14 +209,9 @@ async def run_campaign(
     # Check daily cap
     rate_limiter = RateLimiter(override_limit=override_limit)
     if override_limit:
-        rate_limiter.reset()
-        print(f"[CAP] Override: skipping ramp-up (sent count reset for this run)")
+        print(f"[CAP] Override: skipping ramp-up (daily cap still enforced via message log)")
     daily_cap = rate_limiter.get_daily_cap()
-    today_count = (
-        rate_limiter._override_sent_today
-        if rate_limiter._override_sent_today is not None
-        else get_today_send_count()
-    )
+    today_count = get_today_send_count()
     print(f"[CAP] Today's sent: {today_count} / {daily_cap}")
     can_send, reason = rate_limiter.can_send_today()
     if not can_send and not no_limits:

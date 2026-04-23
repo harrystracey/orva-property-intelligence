@@ -1820,8 +1820,11 @@ def apply_comprehensive_enrichment(lead_df: pd.DataFrame,
                     key = f"{bld}|{unit}"
                     if key not in reidin_live_lookup:
                         reidin_live_lookup[key] = data_val
-        except Exception:
-            pass  # Reidin data unavailable — cascade silently continues at Priority 2
+        except Exception as e:
+            # Reidin lookup failed -- cascade continues at Priority 2 so the
+            # app still loads, but log the failure instead of swallowing so
+            # corruption / schema drift in reidin_master doesn't hide.
+            print(f"[cascade] Priority 1.5 Reidin load failed ({_rpath.name}): {e}; falling through to registry")
 
     # Live PF lookup: unit+building → bedrooms (lower confidence — PF scraper can misread bedrooms)
     pf_live_lookup = {}
@@ -1850,8 +1853,8 @@ def apply_comprehensive_enrichment(lead_df: pd.DataFrame,
                     except Exception:
                         pass
                 pf_live_lookup[pf_key] = {"bedrooms": br_m.group(1), "size_sqft": size_sqft}
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[cascade] Priority 2.3 PF load failed ({_pf_path.name}): {e}; falling through")
 
     # Bayut size-match lookup: {building_key: [(size_sqft, bedrooms)]}
     # Uses standardize_building_name so keys match what the enrichment loop sees
@@ -1873,9 +1876,11 @@ def apply_comprehensive_enrichment(lead_df: pd.DataFrame,
                         bayut_size_lookup[bkey] = []
                     bayut_size_lookup[bkey].append((size, beds))
                 except Exception:
-                    pass
-        except Exception:
-            pass
+                    # Per-row parse failure (e.g. 'Studio' bedrooms in a
+                    # numeric-only column). Skip the row, keep the loop going.
+                    continue
+        except Exception as e:
+            print(f"[cascade] Priority 2.6 Bayut load failed ({_bayut_path.name}): {e}; falling through")
 
     # Initialize clean columns
     lead_df['size_sqft'] = None
@@ -2000,8 +2005,14 @@ def apply_comprehensive_enrichment(lead_df: pd.DataFrame,
         # PRIORITY 2.6: Bayut size-match (consensus across listings for same building+size ±75 sqft)
         # Resolves units where we know size but have no bedroom data from any unit-level source
         if not bed_resolved and building and bayut_size_lookup:
-            # Use size from registry (if Priority 2 filled it) or from original lead data
-            unit_size = lead_df.at[idx, 'size_sqft'] if not pd.isna(lead_df.at[idx, 'size_sqft'] if 'size_sqft' in lead_df.columns else None) else original_size
+            # Use size from registry (if Priority 2 filled it) or from original lead data.
+            # Read explicitly so a missing column or an all-NaN cell falls through to
+            # original_size instead of hiding inside a nested ternary.
+            unit_size = original_size
+            if 'size_sqft' in lead_df.columns:
+                registry_size = lead_df.at[idx, 'size_sqft']
+                if pd.notna(registry_size):
+                    unit_size = registry_size
             if pd.notna(unit_size) and unit_size > 300:
                 bkey_b = str(building).strip().lower().replace(' ', '').replace('-', '')
                 matches = bayut_size_lookup.get(bkey_b, [])
@@ -2263,21 +2274,6 @@ def dedup_key(row) -> str:
 # =============================================================================
 # FUTURE: WEB SCRAPING SCAFFOLD
 # =============================================================================
-
-def scrape_missing_bedroom_data(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Future: Scrape Property Finder/Bayut for buildings with many missing bedrooms.
-    Target buildings: Marina Residences, Seven Hotel, Ocean House, Golden Mile
-    Match by: building_name + unit_number
-    
-    TODO: Implement web scraping
-    - Identify buildings with highest missing bedroom counts
-    - Use Selenium/Playwright to scrape property listing sites
-    - Match scraped data to leads by building + unit
-    - Fill in missing bedrooms and validate against scraped sizes
-    """
-    return df
-
 
 # =============================================================================
 # MAIN PROCESSING PIPELINE
@@ -2703,13 +2699,10 @@ def process_and_clean_data(data_path: str = './data') -> Tuple[pd.DataFrame, Dic
     )
     diag['enrichment_stats'] = enrichment_stats
     
-    # 7. Future: Web scraping for missing data
-    combined = scrape_missing_bedroom_data(combined)
-    
-    # 8. Calculate completeness
+    # 7. Calculate completeness
     combined['completeness'] = combined.apply(calc_completeness, axis=1)
-    
-    # 9. Sort (prioritize PF repeated listings first, then completeness, then date)
+
+    # 8. Sort (prioritize PF repeated listings first, then completeness, then date)
     sort_cols = ['pf_listing_count', 'completeness', 'date'] if 'pf_listing_count' in combined.columns else ['completeness', 'date']
     combined = combined.sort_values(sort_cols, ascending=[False, False, False] if 'pf_listing_count' in combined.columns else [False, False], na_position='last')
     combined = combined.reset_index(drop=True)
