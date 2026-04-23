@@ -1700,12 +1700,23 @@ def normalize_dataframe(df: pd.DataFrame, filename: str = '') -> pd.DataFrame:
 
 # =============================================================================
 # COMPREHENSIVE ENRICHMENT ENGINE
-# Priority order for bedroom inference:
-# 1. Original data from lead file
-# 2. Building-specific unit schema (manual override)
-# 3. Unit pattern from reference data  
-# 4. Size-based inference (from lead file size)
-# 5. Default to None with validation flag
+# Priority order for bedroom inference (highest authority first). Each step
+# is only tried if the previous steps did not resolve a bedroom:
+#   0.   Exact (building, unit) hit in DLD reference file
+#   1.   Original bedroom value already in the lead file
+#   1.5  Live Reidin DLD lookup (reidin_master.parquet) -- HIGH
+#   2.   Unit registry lookup (multi-source, prebuilt)
+#   2.3  Live PropertyFinder file lookup -- LOW (PF can misread bedrooms)
+#   2.6  Bayut size-match consensus across listings (+/-75 sqft)
+#   3.   Static building unit schema (manual overrides)
+#   3.5  Dynamic schema learned from registry suffix patterns
+#   4.   Unit pattern table from reference data
+#   4.5  Size-based inference from lead file size
+#   5.   Building default bedrooms
+#
+# Keep this comment and the `stats` counter names below in sync with the
+# actual cascade. The counter names are used by the reload summary so
+# each priority needs its own counter, not a shared "registry" one.
 # =============================================================================
 
 def apply_comprehensive_enrichment(lead_df: pd.DataFrame,
@@ -1723,7 +1734,10 @@ def apply_comprehensive_enrichment(lead_df: pd.DataFrame,
     stats = {
         'beds_original': 0,
         'beds_from_exact': 0,
+        'beds_from_reidin': 0,
         'beds_from_registry': 0,
+        'beds_from_pf': 0,
+        'beds_from_bayut_size': 0,
         'beds_from_schema': 0,
         'beds_from_pattern': 0,
         'beds_from_size': 0,
@@ -1950,7 +1964,7 @@ def apply_comprehensive_enrichment(lead_df: pd.DataFrame,
                 lead_df.at[idx, 'bedroom_method'] = 'Reidin DLD (live)'
                 lead_df.at[idx, 'bedroom_confidence'] = 'High'
                 bed_resolved = True
-                stats['beds_from_registry'] += 1
+                stats['beds_from_reidin'] += 1
                 if not size_resolved and r_rec.get('size_sqft'):
                     lead_df.at[idx, 'size_sqft'] = r_rec['size_sqft']
                     lead_df.at[idx, 'size_sqm'] = round(r_rec['size_sqft'] * SQFT_TO_SQM, 0)
@@ -1993,7 +2007,7 @@ def apply_comprehensive_enrichment(lead_df: pd.DataFrame,
                 lead_df.at[idx, 'bedroom_method'] = 'PF scrape (live — verify)'
                 lead_df.at[idx, 'bedroom_confidence'] = 'Low'
                 bed_resolved = True
-                stats['beds_from_registry'] += 1
+                stats['beds_from_pf'] += 1
                 if not size_resolved and pf_rec.get('size_sqft'):
                     lead_df.at[idx, 'size_sqft'] = pf_rec['size_sqft']
                     lead_df.at[idx, 'size_sqm'] = round(pf_rec['size_sqft'] * SQFT_TO_SQM, 0)
@@ -2024,7 +2038,7 @@ def apply_comprehensive_enrichment(lead_df: pd.DataFrame,
                         lead_df.at[idx, 'bedroom_method'] = f'Bayut size-match ({int(unit_size)} sqft, {len(nearby_beds)} listings)'
                         lead_df.at[idx, 'bedroom_confidence'] = 'Medium'
                         bed_resolved = True
-                        stats['beds_from_size'] += 1
+                        stats['beds_from_bayut_size'] += 1
 
         # PRIORITY 3: Building-specific unit schema (manual override table)
         if not bed_resolved and building and unit_number:
@@ -2071,7 +2085,7 @@ def apply_comprehensive_enrichment(lead_df: pd.DataFrame,
                     size_resolved = True
                     stats['size_estimated'] += 1
         
-        # PRIORITY 4: Size-based bedroom inference
+        # PRIORITY 4.5: Size-based bedroom inference (lead-file size only)
         if not bed_resolved and pd.notna(original_size) and original_size > 100:
             size_result = infer_bedrooms_from_size_definitive(original_size, building)
             if size_result:

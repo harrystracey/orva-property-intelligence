@@ -3,6 +3,8 @@ ORVA API — FastAPI backend for Property Intelligence.
 Imports existing Python modules directly (data_processor, building_intelligence, etc.)
 """
 
+import logging
+import os
 import sys
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -15,6 +17,15 @@ _root = Path(__file__).resolve().parent.parent
 if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
 
+# Configure root logger once. LOG_LEVEL env override lets ops raise to DEBUG
+# in staging or drop to WARNING when stdout is noisy. format keeps a single
+# line per record so Docker / journalctl stay tidy.
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger("orva_api")
+
 from .config import CORS_ORIGINS
 from .deps import data_store
 from .routers import auth, leads, clients, whatsapp, chat
@@ -23,11 +34,11 @@ from .routers import auth, leads, clients, whatsapp, chat
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load data on startup."""
-    print("[ORVA API] Loading lead data...")
+    logger.info("loading lead data")
     data_store.load()
-    print(f"[ORVA API] Loaded {len(data_store.leads_df):,} leads")
+    logger.info("loaded %d leads", len(data_store.leads_df))
     yield
-    print("[ORVA API] Shutting down")
+    logger.info("shutting down")
 
 
 app = FastAPI(

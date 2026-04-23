@@ -68,6 +68,19 @@ html {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* Main-content bottom padding on mobile: reserves room for the fixed bottom
+ * nav AND adds the notch inset so content doesn't sit under the home bar.
+ * Resets to a normal 1rem on md+ where the bottom nav is hidden. Use this
+ * on every page's outer <div> in place of a hardcoded `pb-20 md:pb-4`. */
+.pb-mobile-nav {
+  padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+}
+@media (min-width: 768px) {
+  .pb-mobile-nav {
+    padding-bottom: 1rem;
+  }
+}
+
 /* Table horizontal scroll on mobile */
 .table-scroll {
   overflow-x: auto;

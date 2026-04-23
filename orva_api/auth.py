@@ -4,6 +4,7 @@ Replaces streamlit-authenticator YAML credentials.
 """
 
 import json
+import logging
 import jwt
 import bcrypt
 from datetime import datetime, timedelta, timezone
@@ -11,6 +12,8 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from .config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRY_HOURS, USERS_FILE
+
+logger = logging.getLogger("orva_api.auth")
 
 security = HTTPBearer()
 
@@ -34,9 +37,9 @@ def _load_users() -> dict:
                 data = json.load(f)
             if isinstance(data, dict) and data:
                 return data
-            print(f"[auth] {USERS_FILE} is empty or malformed; using fallback users")
+            logger.warning("%s is empty or malformed; using fallback users", USERS_FILE)
         except Exception as e:
-            print(f"[auth] failed to read {USERS_FILE} ({e}); using fallback users")
+            logger.warning("failed to read %s (%s); using fallback users", USERS_FILE, e)
     return _FALLBACK_USERS
 
 

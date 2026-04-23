@@ -15,13 +15,13 @@ const serif = "Georgia, 'Times New Roman', serif";
 function HeroSection() {
   return (
     <section className="relative flex min-h-[100dvh] flex-col items-center justify-center px-6">
-      {/* Wordmark */}
+      {/* Wordmark -- responsive sizing so the hero doesn't eat the viewport
+          on 375px phones where 3rem previously clipped. */}
       <h1
-        className="text-foreground"
+        className="text-4xl sm:text-5xl md:text-6xl text-foreground"
         style={{
           fontFamily: serif,
           fontWeight: 300,
-          fontSize: "3rem",
           letterSpacing: "0.35em",
         }}
       >

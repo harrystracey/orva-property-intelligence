@@ -156,7 +156,7 @@ function ConnectionStatus() {
               <img
                 src={`data:image/png;base64,${status.qr_b64}`}
                 alt="WhatsApp QR"
-                className="h-40 w-40 sm:h-48 sm:w-48 max-w-full rounded-lg"
+                className="h-40 w-40 sm:h-48 sm:w-48 max-h-[50vh] max-w-full rounded-lg"
               />
             </div>
           )}
@@ -875,7 +875,7 @@ export default function WhatsAppPage() {
   if (!authenticated) { router.replace("/"); return null; }
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4 pb-20 md:pb-4 max-w-5xl mx-auto w-full">
+    <div className="flex flex-1 flex-col gap-4 p-4 pb-mobile-nav max-w-5xl mx-auto w-full">
       {/* Header */}
       <div className="flex items-center gap-2">
         <MessageSquare size={20} className="text-accent" />

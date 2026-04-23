@@ -226,7 +226,7 @@ export function FilterPanel({
             value={filters.owner_name || ""}
             onChange={(e) => update({ owner_name: e.target.value })}
             onKeyDown={handleKeyDown}
-            className={`${inputClass} w-auto min-w-[140px] max-w-48`}
+            className={`${inputClass} w-auto min-w-[120px] md:min-w-[120px] lg:min-w-[160px] max-w-48`}
           />
           <input
             type="text"
@@ -234,7 +234,7 @@ export function FilterPanel({
             value={filters.building_search || ""}
             onChange={(e) => update({ building_search: e.target.value })}
             onKeyDown={handleKeyDown}
-            className={`${inputClass} w-auto min-w-[120px] max-w-40`}
+            className={`${inputClass} w-auto min-w-[100px] md:min-w-[100px] lg:min-w-[140px] max-w-40`}
           />
           <select
             value={filters.bedrooms || ""}

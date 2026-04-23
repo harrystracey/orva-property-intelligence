@@ -81,7 +81,7 @@ export default function CallLogPage() {
   for (const o of outcomes) counts[o] = calls.filter((c) => c.outcome === o).length;
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4 pb-20 md:pb-4 max-w-4xl mx-auto w-full">
+    <div className="flex flex-1 flex-col gap-4 p-4 pb-mobile-nav max-w-4xl mx-auto w-full">
       {/* Header */}
       <div className="flex items-center gap-2">
         <Phone size={20} className="text-accent" />

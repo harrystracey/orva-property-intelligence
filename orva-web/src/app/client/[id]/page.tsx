@@ -207,7 +207,7 @@ export default function ClientProfilePage() {
   const beds = profile.bedrooms !== null ? (profile.bedrooms === 0 ? "Studio" : `${profile.bedrooms} BR`) : "--";
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4 pb-20 md:pb-4 max-w-5xl mx-auto w-full">
+    <div className="flex flex-1 flex-col gap-4 p-4 pb-mobile-nav max-w-5xl mx-auto w-full">
       {/* Header */}
       <div className="flex items-center gap-3">
         <button
