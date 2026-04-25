@@ -9,7 +9,7 @@ Covers:
      (CSV ingestion path is the only Reidin entry point now).
   5. orva-web /tools/reidin stub is gone, /tools/pf-scraper still present
      (PF scraper is public -- user wants it kept even though UI is a stub).
-  6. app.py no longer references the deleted modules.
+  6. app.py itself has been deleted (Streamlit removed in Phase 4).
 
 Run: python test_restricted_scrapers_removed.py
 """
@@ -142,28 +142,28 @@ check(
 
 
 # ---------------------------------------------------------------------------
-# 6. app.py is clean
+# 6. app.py is gone (Streamlit removed in Phase 4)
 # ---------------------------------------------------------------------------
-print("\n[6] app.py no longer references deleted modules")
-
-app_src = (HERE / "app.py").read_text(encoding="utf-8")
+print("\n[6] Streamlit (app.py) has been deleted")
 
 check(
-    "app.py does not subprocess reidin_extractor.py",
-    "reidin_extractor.py" not in app_src,
+    "app.py no longer exists at repo root",
+    not (HERE / "app.py").exists(),
 )
 check(
-    "app.py does not import reidin_extractor",
-    "from reidin_extractor" not in app_src and "import reidin_extractor" not in app_src,
+    "start_app.ps1 launcher is gone",
+    not (HERE / "start_app.ps1").exists(),
 )
+_req_lines = [
+    L.strip()
+    for L in (HERE / "requirements.txt").read_text(encoding="utf-8").splitlines()
+    if L.strip() and not L.strip().startswith("#")
+]
+_pkg_names = {L.split("=")[0].split(">")[0].split("<")[0].strip().lower() for L in _req_lines}
 check(
-    "app.py does not import propspace_scraper",
-    "propspace_scraper" not in app_src or "scraped_data/propspace_leads.csv" in app_src,
-    "propspace CSV path may remain (historical data is kept) but scraper module must not be imported",
-)
-check(
-    "app.py does not import scraper_agent (PropertyMonitor)",
-    "scraper_agent" not in app_src,
+    "streamlit no longer in requirements.txt",
+    not any(p.startswith("streamlit") for p in _pkg_names),
+    f"packages: {sorted(_pkg_names)}",
 )
 
 

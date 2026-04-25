@@ -1,15 +1,21 @@
-streamlit>=1.28.0
-streamlit-authenticator>=0.3.0
-pyarrow>=14.0.0
-fuzzywuzzy>=0.18.0
-python-levenshtein>=0.21.0
+# ORVA platform requirements (Streamlit was deleted in Phase 4 of the
+# SaaS conversion -- the UI now lives in orva-web/ as Next.js + the API
+# in orva_api/ as FastAPI).
+
+# Data engine
 pandas>=2.0.0
+pyarrow>=14.0.0
 openpyxl>=3.1.0
 python-dateutil>=2.8.0
+
+# Building name normalisation
+fuzzywuzzy>=0.18.0
+python-levenshtein>=0.21.0
+
+# AI / Claude API
 anthropic>=0.18.0
 python-dotenv>=1.0.0
+
+# Public scrapers (Bayut, PropertyFinder)
 playwright>=1.40.0
 beautifulsoup4>=4.12.0
-2captcha-python>=1.2.0
-opencv-python-headless>=4.8.0
-streamlit-drawable-canvas>=0.9.0
