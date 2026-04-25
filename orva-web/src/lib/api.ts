@@ -769,3 +769,174 @@ export async function resolveUnitSpecs(
     `/api/contacts/${contactId}/resolve-unit-specs${qs}`,
   );
 }
+
+// --- Lease expiry ---
+
+export interface ExpiringLease {
+  building_name: string | null;
+  unit_number: string | null;
+  bedrooms: string | null;
+  size_sqft: number | null;
+  contract_end: string | null;
+  days_remaining: number | null;
+  annual_rent: number | null;
+  has_owner_contact: boolean;
+  owner_name: string | null;
+  owner_phone: string | null;
+  owner_email: string | null;
+}
+
+export interface LeaseExpiryResponse {
+  leases: ExpiringLease[];
+  total: number;
+  with_contact: number;
+  active_rentals_total: number;
+  unique_buildings: number;
+  expiry_window_days: number;
+}
+
+export async function getLeaseExpiry(
+  daysAhead: number,
+  building?: string,
+  bedrooms?: string,
+): Promise<LeaseExpiryResponse> {
+  const qs = buildQuery({ days_ahead: daysAhead, building, bedrooms });
+  return request<LeaseExpiryResponse>(`/api/lease-expiry${qs}`);
+}
+
+// --- Listing matcher ---
+
+export interface MatchedOwner {
+  building: string;
+  unit: string;
+  size_sqft: number | null;
+  beds: string | null;
+  owner_name: string;
+  phone: string;
+  phone_display: string;
+  email: string | null;
+  transaction_date: string | null;
+  transaction_value: number | null;
+  confidence: number;
+  match_type: string;
+}
+
+export interface MatchListingResponse {
+  matches: MatchedOwner[];
+  coverage: Record<string, unknown>;
+}
+
+export interface MatchListingPayload {
+  building_name: string;
+  unit_number?: string | null;
+  size_sqft?: number | null;
+  bedrooms?: string | null;
+}
+
+export async function matchListing(
+  payload: MatchListingPayload,
+): Promise<MatchListingResponse> {
+  return request<MatchListingResponse>(`/api/match/listing`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+// --- Bayut listings ---
+
+export interface BayutListing {
+  listing_url: string | null;
+  listing_type: string | null;
+  building_name: string | null;
+  unit_number: string | null;
+  bedrooms: string | null;
+  bathrooms: string | null;
+  size_sqft: number | null;
+  price_aed: number | null;
+  rent_period: string | null;
+  view_type: string | null;
+  agent_name: string | null;
+  agency: string | null;
+  listed_date: string | null;
+  scraped_at: string | null;
+}
+
+export interface BuildingSummary {
+  building_name: string;
+  listings: number;
+  avg_beds: number | null;
+  avg_size: number | null;
+  avg_price: number | null;
+  types: string;
+}
+
+export interface BayutListingsResponse {
+  listings: BayutListing[];
+  total: number;
+  sale_count: number;
+  rent_count: number;
+  unique_buildings: number;
+  building_summary: BuildingSummary[];
+  last_scraped: string | null;
+}
+
+export interface BayutFilters {
+  listing_type?: string;
+  building?: string;
+  bedrooms?: string;
+  price_min?: number;
+  price_max?: number;
+  limit?: number;
+}
+
+export async function getBayutListings(
+  filters: BayutFilters = {},
+): Promise<BayutListingsResponse> {
+  return request<BayutListingsResponse>(
+    `/api/bayut/listings${buildQuery(filters)}`,
+  );
+}
+
+// --- Client match ---
+
+export interface OwnerMatchResult {
+  client_id: string;
+  owner_name: string | null;
+  phone: string | null;
+  building_name: string | null;
+  unit_number: string | null;
+  bedrooms: string | null;
+  size_sqft: number | null;
+  last_sale_price: number | null;
+  last_sale_date: string | null;
+  last_annual_rent: number | null;
+  has_active_listing: boolean;
+  active_listing_url: string | null;
+  active_listing_price: number | null;
+  score: number;
+  score_factors: string[];
+}
+
+export interface ClientMatchResponse {
+  matches: OwnerMatchResult[];
+  total: number;
+}
+
+export interface ClientMatchPayload {
+  transaction_type: "sale" | "rent";
+  bedrooms?: string | null;
+  buildings?: string[];
+  sea_view_only?: boolean;
+  budget_min?: number | null;
+  budget_max?: number | null;
+  limit?: number;
+}
+
+export async function findClientMatches(
+  payload: ClientMatchPayload,
+): Promise<ClientMatchResponse> {
+  return request<ClientMatchResponse>(`/api/client-match`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
