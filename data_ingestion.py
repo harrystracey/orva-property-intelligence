@@ -693,13 +693,497 @@ def build_cross_references() -> Dict:
 
 
 # ---------------------------------------------------------------------------
+# RENTAL INGESTION (historical PropertyMonitor Ejari data)
+# ---------------------------------------------------------------------------
+
+RENTALS_PATH = Path("scraped_data/palm_jumeirah_rentals.csv")
+
+
+def ingest_rentals(csv_path: Optional[str] = None) -> Dict:
+    """
+    Import historical Ejari rental contracts into the rentals table.
+    PropertyMonitor live scraping has been removed; this is a one-shot
+    import of the frozen historical CSV.
+    """
+    path = Path(csv_path) if csv_path else RENTALS_PATH
+    if not path.exists():
+        return {"error": f"Rentals CSV not found at {path}", "skipped": True}
+
+    print(f"[ingest] Loading rentals from: {path}")
+    try:
+        df = None
+        for enc in ["utf-8", "latin-1", "cp1252"]:
+            try:
+                df = pd.read_csv(str(path), encoding=enc, low_memory=False)
+                break
+            except UnicodeDecodeError:
+                continue
+        if df is None or df.empty:
+            return {"error": "Could not read rentals CSV"}
+    except Exception as e:
+        return {"error": str(e)}
+
+    # Column-name resolution -- be liberal about what we accept since
+    # PM exports have changed format over the years.
+    def _col(*candidates):
+        for c in candidates:
+            if c in df.columns:
+                return c
+        return None
+
+    col_building = _col("building_name", "Building", "building", "Project")
+    col_unit     = _col("unit_number", "Unit", "unit", "Unit No")
+    col_beds     = _col("bedrooms", "Bedrooms", "no_beds", "beds")
+    col_size     = _col("size_sqft", "Size (Sqf)", "size", "unit_size_sqft")
+    col_rent     = _col("annual_rent", "Annual Rent (AED)", "rent_aed", "amount_aed")
+    col_start    = _col("contract_start", "Start Date", "start_date", "contract_start_date")
+    col_end      = _col("contract_end", "End Date", "end_date", "contract_end_date")
+    col_floor    = _col("floor", "Floor", "floor_no", "floor_level")
+    col_view     = _col("view", "View", "view_type")
+
+    conn = get_connection()
+    insert_sql = """
+        INSERT OR IGNORE INTO rentals (
+            building_name, building_name_normalized,
+            unit_number, unit_number_normalized,
+            bedrooms, size_sqft, annual_rent_aed,
+            contract_start_date, contract_end_date,
+            floor_level, view_type, source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """
+    batch = []
+    stats = {"inserted": 0, "skipped": 0, "errors": 0, "total": len(df)}
+
+    for idx, row in df.iterrows():
+        try:
+            building_raw = _safe_str(row.get(col_building)) if col_building else None
+            building_norm = standardize_building_name(building_raw) if building_raw else None
+            unit_raw = _safe_str(row.get(col_unit)) if col_unit else None
+            unit_norm = _normalize_unit_number(unit_raw) if unit_raw else None
+
+            beds = _safe_str(row.get(col_beds)) if col_beds else None
+            size = _safe_float(row.get(col_size)) if col_size else None
+            rent = _safe_float(row.get(col_rent)) if col_rent else None
+            start_date = _safe_str(row.get(col_start)) if col_start else None
+            end_date = _safe_str(row.get(col_end)) if col_end else None
+            floor = _safe_str(row.get(col_floor)) if col_floor else None
+            view = _safe_str(row.get(col_view)) if col_view else None
+
+            # Skip rows with no rent value -- they're not useful market intel
+            if not rent:
+                stats["skipped"] += 1
+                continue
+
+            batch.append((
+                building_raw, building_norm, unit_raw, unit_norm,
+                beds, size, rent, start_date, end_date,
+                floor, view, "property_monitor_historical",
+            ))
+            if len(batch) >= 500:
+                conn.executemany(insert_sql, batch)
+                stats["inserted"] += len(batch)
+                batch = []
+        except Exception as e:
+            stats["errors"] += 1
+            if stats["errors"] <= 5:
+                print(f"  [WARN] Rental row {idx}: {e}")
+
+    if batch:
+        conn.executemany(insert_sql, batch)
+        stats["inserted"] += len(batch)
+    conn.commit()
+    actual = conn.execute("SELECT COUNT(*) FROM rentals").fetchone()[0]
+    stats["inserted"] = actual
+    conn.close()
+    print(f"  Rentals ingested: {actual:,} rows")
+    return stats
+
+
+# ---------------------------------------------------------------------------
+# BAYUT LISTING INGESTION (public scraper output)
+# ---------------------------------------------------------------------------
+
+BAYUT_PATH = Path("data/bayut_palm_listings.csv")
+
+
+def ingest_bayut_listings(csv_path: Optional[str] = None) -> Dict:
+    """
+    Import the latest scraped Bayut listings. Replaces the table on each
+    full run -- Bayut listings are time-sensitive market data, not history.
+    """
+    path = Path(csv_path) if csv_path else BAYUT_PATH
+    if not path.exists():
+        return {"error": f"Bayut listings CSV not found at {path}", "skipped": True}
+
+    print(f"[ingest] Loading Bayut listings from: {path}")
+    try:
+        df = pd.read_csv(str(path), encoding="utf-8", low_memory=False, on_bad_lines="skip")
+        if df.empty:
+            return {"error": "Bayut CSV is empty"}
+    except Exception as e:
+        return {"error": str(e)}
+
+    def _col(*candidates):
+        for c in candidates:
+            if c in df.columns:
+                return c
+        return None
+
+    col_url        = _col("listing_url", "url")
+    col_type       = _col("listing_type", "type")
+    col_building   = _col("building_name", "building", "tower")
+    col_unit       = _col("unit_number", "unit")
+    col_unit_type  = _col("unit_type", "property_type")
+    col_beds       = _col("bedrooms", "beds")
+    col_baths      = _col("bathrooms", "baths")
+    col_size       = _col("size_sqft", "size", "area_sqft")
+    col_price      = _col("price_aed", "price", "price_value")
+    col_period     = _col("rent_period", "frequency")
+    col_view       = _col("view", "view_type")
+    col_agent      = _col("agent_name", "agent")
+    col_agency     = _col("agency", "agent_company")
+    col_listed     = _col("listed_date", "date_listed")
+
+    conn = get_connection()
+    # Replace strategy: clear table, insert fresh
+    conn.execute("DELETE FROM bayut_listings")
+    conn.commit()
+
+    insert_sql = """
+        INSERT OR IGNORE INTO bayut_listings (
+            listing_url, listing_type,
+            building_name, building_name_normalized,
+            unit_number, unit_type,
+            bedrooms, bathrooms, size_sqft, price_aed,
+            rent_period, view_type, agent_name, agency, listed_date
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """
+    batch = []
+    stats = {"inserted": 0, "skipped": 0, "errors": 0, "total": len(df)}
+
+    for idx, row in df.iterrows():
+        try:
+            url = _safe_str(row.get(col_url)) if col_url else None
+            if not url:
+                stats["skipped"] += 1
+                continue
+            building_raw = _safe_str(row.get(col_building)) if col_building else None
+            building_norm = standardize_building_name(building_raw) if building_raw else None
+            batch.append((
+                url,
+                _safe_str(row.get(col_type)) if col_type else None,
+                building_raw, building_norm,
+                _safe_str(row.get(col_unit)) if col_unit else None,
+                _safe_str(row.get(col_unit_type)) if col_unit_type else None,
+                _safe_str(row.get(col_beds)) if col_beds else None,
+                _safe_str(row.get(col_baths)) if col_baths else None,
+                _safe_float(row.get(col_size)) if col_size else None,
+                _safe_float(row.get(col_price)) if col_price else None,
+                _safe_str(row.get(col_period)) if col_period else None,
+                _safe_str(row.get(col_view)) if col_view else None,
+                _safe_str(row.get(col_agent)) if col_agent else None,
+                _safe_str(row.get(col_agency)) if col_agency else None,
+                _safe_str(row.get(col_listed)) if col_listed else None,
+            ))
+            if len(batch) >= 500:
+                conn.executemany(insert_sql, batch)
+                stats["inserted"] += len(batch)
+                batch = []
+        except Exception as e:
+            stats["errors"] += 1
+            if stats["errors"] <= 5:
+                print(f"  [WARN] Bayut row {idx}: {e}")
+
+    if batch:
+        conn.executemany(insert_sql, batch)
+        stats["inserted"] += len(batch)
+    conn.commit()
+    actual = conn.execute("SELECT COUNT(*) FROM bayut_listings").fetchone()[0]
+    stats["inserted"] = actual
+    conn.close()
+    print(f"  Bayut listings ingested: {actual:,} rows")
+    return stats
+
+
+# ---------------------------------------------------------------------------
+# PROPERTYFINDER LISTING INGESTION (public scraper output)
+# ---------------------------------------------------------------------------
+
+PF_PATH = Path("scraped_data/propertyfinder_scraped_leads.csv")
+
+
+def ingest_pf_listings(csv_path: Optional[str] = None) -> Dict:
+    """
+    Import PropertyFinder scraper output. Same replace-on-load semantics
+    as Bayut.
+    """
+    path = Path(csv_path) if csv_path else PF_PATH
+    if not path.exists():
+        return {"error": f"PF listings CSV not found at {path}", "skipped": True}
+
+    print(f"[ingest] Loading PF listings from: {path}")
+    try:
+        df = pd.read_csv(str(path), encoding="utf-8", low_memory=False, on_bad_lines="skip")
+        if df.empty:
+            return {"error": "PF CSV is empty"}
+    except Exception as e:
+        return {"error": str(e)}
+
+    def _col(*candidates):
+        for c in candidates:
+            if c in df.columns:
+                return c
+        return None
+
+    col_url         = _col("listing_url", "url")
+    col_type        = _col("listing_type", "type")
+    col_building    = _col("building_name", "building", "tower")
+    col_unit        = _col("unit_number", "unit")
+    col_beds        = _col("bedrooms", "beds")
+    col_baths       = _col("bathrooms", "baths")
+    col_size        = _col("size_sqft", "size", "area_sqft")
+    col_price       = _col("price_aed", "price")
+    col_period      = _col("rent_period", "frequency")
+    col_view        = _col("view", "view_type")
+    col_permit      = _col("permit_number", "permit", "trakheesi", "dld_permit")
+    col_owner_name  = _col("owner_name", "landlord", "owner")
+    col_owner_phone = _col("owner_phone", "landlord_phone")
+    col_agent       = _col("agent_name", "agent")
+    col_agency      = _col("agency", "agent_company")
+    col_listed      = _col("listed_date", "date_listed")
+
+    conn = get_connection()
+    conn.execute("DELETE FROM pf_listings")
+    conn.commit()
+
+    insert_sql = """
+        INSERT OR IGNORE INTO pf_listings (
+            listing_url, listing_type,
+            building_name, building_name_normalized,
+            unit_number, bedrooms, bathrooms, size_sqft, price_aed,
+            rent_period, view_type, permit_number,
+            owner_name, owner_phone, agent_name, agency, listed_date
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """
+    batch = []
+    stats = {"inserted": 0, "skipped": 0, "errors": 0, "total": len(df)}
+
+    for idx, row in df.iterrows():
+        try:
+            url = _safe_str(row.get(col_url)) if col_url else None
+            if not url:
+                stats["skipped"] += 1
+                continue
+            building_raw = _safe_str(row.get(col_building)) if col_building else None
+            building_norm = standardize_building_name(building_raw) if building_raw else None
+            batch.append((
+                url,
+                _safe_str(row.get(col_type)) if col_type else None,
+                building_raw, building_norm,
+                _safe_str(row.get(col_unit)) if col_unit else None,
+                _safe_str(row.get(col_beds)) if col_beds else None,
+                _safe_str(row.get(col_baths)) if col_baths else None,
+                _safe_float(row.get(col_size)) if col_size else None,
+                _safe_float(row.get(col_price)) if col_price else None,
+                _safe_str(row.get(col_period)) if col_period else None,
+                _safe_str(row.get(col_view)) if col_view else None,
+                _safe_str(row.get(col_permit)) if col_permit else None,
+                _safe_str(row.get(col_owner_name)) if col_owner_name else None,
+                _safe_str(row.get(col_owner_phone)) if col_owner_phone else None,
+                _safe_str(row.get(col_agent)) if col_agent else None,
+                _safe_str(row.get(col_agency)) if col_agency else None,
+                _safe_str(row.get(col_listed)) if col_listed else None,
+            ))
+            if len(batch) >= 500:
+                conn.executemany(insert_sql, batch)
+                stats["inserted"] += len(batch)
+                batch = []
+        except Exception as e:
+            stats["errors"] += 1
+            if stats["errors"] <= 5:
+                print(f"  [WARN] PF row {idx}: {e}")
+
+    if batch:
+        conn.executemany(insert_sql, batch)
+        stats["inserted"] += len(batch)
+    conn.commit()
+    actual = conn.execute("SELECT COUNT(*) FROM pf_listings").fetchone()[0]
+    stats["inserted"] = actual
+    conn.close()
+    print(f"  PF listings ingested: {actual:,} rows")
+    return stats
+
+
+# ---------------------------------------------------------------------------
+# CALL-LOG MIGRATION (JSON -> SQLite)
+# ---------------------------------------------------------------------------
+
+CALL_LOG_PATH = Path("client_data/call_log.json")
+
+
+def ingest_call_log() -> Dict:
+    """
+    One-shot: migrate client_data/call_log.json into the call_log table.
+    Safe to re-run -- INSERT OR IGNORE on the natural key.
+    """
+    import json
+    if not CALL_LOG_PATH.exists():
+        return {"error": "call_log.json not found", "skipped": True}
+
+    try:
+        calls = json.loads(CALL_LOG_PATH.read_text(encoding="utf-8"))
+    except Exception as e:
+        return {"error": f"Could not read call_log.json: {e}"}
+
+    if not calls:
+        return {"inserted": 0, "skipped": 0, "errors": 0, "total": 0}
+
+    conn = get_connection()
+    insert_sql = """
+        INSERT INTO call_log (
+            client_id, client_name, building_name, unit_number, phone,
+            outcome, notes, called_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """
+    stats = {"inserted": 0, "errors": 0, "total": len(calls)}
+    batch = []
+
+    # call_log.json shape: a flat list of call dicts, OR a dict keyed by
+    # client_id -- accept both.
+    if isinstance(calls, dict):
+        rows = []
+        for cid, call_list in calls.items():
+            for c in (call_list or []):
+                c.setdefault("client_id", cid)
+                rows.append(c)
+        calls = rows
+
+    for c in calls:
+        try:
+            batch.append((
+                c.get("client_id"),
+                c.get("client_name") or c.get("name"),
+                c.get("building_name") or c.get("building"),
+                c.get("unit_number") or c.get("unit"),
+                c.get("phone"),
+                c.get("outcome"),
+                c.get("notes"),
+                c.get("called_at") or c.get("timestamp") or c.get("date"),
+            ))
+            if len(batch) >= 500:
+                conn.executemany(insert_sql, batch)
+                stats["inserted"] += len(batch)
+                batch = []
+        except Exception as e:
+            stats["errors"] += 1
+            if stats["errors"] <= 5:
+                print(f"  [WARN] call_log row: {e}")
+
+    if batch:
+        conn.executemany(insert_sql, batch)
+        stats["inserted"] += len(batch)
+    conn.commit()
+    conn.close()
+    print(f"  Call log entries migrated: {stats['inserted']:,}")
+    return stats
+
+
+# ---------------------------------------------------------------------------
+# WHATSAPP MESSAGE LOG MIGRATION (CSV -> SQLite)
+# ---------------------------------------------------------------------------
+
+WA_LOG_PATH = Path("whatsapp_bot/message_log.csv")
+
+
+def ingest_whatsapp_log() -> Dict:
+    """
+    One-shot: migrate whatsapp_bot/message_log.csv into whatsapp_messages.
+    The CSV stays as a fallback / human-readable backup; SQLite becomes
+    the source of truth for rate-limit checks once cutover lands.
+    """
+    if not WA_LOG_PATH.exists():
+        return {"error": "message_log.csv not found", "skipped": True}
+
+    try:
+        df = pd.read_csv(str(WA_LOG_PATH), encoding="utf-8", low_memory=False, on_bad_lines="skip")
+        if df.empty:
+            return {"inserted": 0, "skipped": 0, "errors": 0, "total": 0}
+    except Exception as e:
+        return {"error": str(e)}
+
+    def _col(*candidates):
+        for c in candidates:
+            if c in df.columns:
+                return c
+        return None
+
+    col_phone     = _col("phone", "phone_number", "to")
+    col_phone_n   = _col("phone_normalized", "normalized_phone")
+    col_name      = _col("owner_name", "name")
+    col_building  = _col("building_name", "building")
+    col_unit      = _col("unit_number", "unit")
+    col_template  = _col("message_template", "template")
+    col_body      = _col("message_body", "body", "message")
+    col_status    = _col("status", "result")
+    col_reason    = _col("failure_reason", "error", "reason")
+    col_campaign  = _col("campaign_id", "campaign")
+    col_sent_at   = _col("sent_at", "timestamp", "date")
+
+    conn = get_connection()
+    insert_sql = """
+        INSERT INTO whatsapp_messages (
+            phone, phone_normalized, owner_name, building_name, unit_number,
+            message_template, message_body, status, failure_reason,
+            campaign_id, sent_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """
+    stats = {"inserted": 0, "errors": 0, "total": len(df)}
+    batch = []
+
+    for idx, row in df.iterrows():
+        try:
+            batch.append((
+                _safe_str(row.get(col_phone)) if col_phone else None,
+                _safe_str(row.get(col_phone_n)) if col_phone_n else None,
+                _safe_str(row.get(col_name)) if col_name else None,
+                _safe_str(row.get(col_building)) if col_building else None,
+                _safe_str(row.get(col_unit)) if col_unit else None,
+                _safe_str(row.get(col_template)) if col_template else None,
+                _safe_str(row.get(col_body)) if col_body else None,
+                _safe_str(row.get(col_status)) if col_status else None,
+                _safe_str(row.get(col_reason)) if col_reason else None,
+                _safe_str(row.get(col_campaign)) if col_campaign else None,
+                _safe_str(row.get(col_sent_at)) if col_sent_at else None,
+            ))
+            if len(batch) >= 500:
+                conn.executemany(insert_sql, batch)
+                stats["inserted"] += len(batch)
+                batch = []
+        except Exception as e:
+            stats["errors"] += 1
+            if stats["errors"] <= 5:
+                print(f"  [WARN] WA log row {idx}: {e}")
+
+    if batch:
+        conn.executemany(insert_sql, batch)
+        stats["inserted"] += len(batch)
+    conn.commit()
+    conn.close()
+    print(f"  WhatsApp messages migrated: {stats['inserted']:,}")
+    return stats
+
+
+# ---------------------------------------------------------------------------
 # FULL RE-INGESTION PIPELINE
 # ---------------------------------------------------------------------------
 
 def reingest_all(clear_existing: bool = True) -> Dict:
     """
-    Full pipeline: clear tables (optional), ingest leads, ingest transactions,
-    build cross-references.
+    Full pipeline: clear tables (optional), ingest every source, build
+    cross-references.
+
+    Each step degrades gracefully -- if a source CSV is missing the step
+    is skipped (logged) rather than failing the whole run.
 
     Parameters:
         clear_existing: If True, wipe existing data before inserting.
@@ -714,58 +1198,94 @@ def reingest_all(clear_existing: bool = True) -> Dict:
     init_database()
 
     if clear_existing:
-        print("\n[1/4] Clearing existing data...")
+        print("\n[1/9] Clearing existing data...")
         conn = get_connection()
-        for table in ["cross_references", "leads", "transactions"]:
+        # Note: we deliberately do NOT clear app-managed tables (notes,
+        # reminders, contacts, contact_lead_links, call_log, whatsapp_messages)
+        # -- those are user-generated and live forever.
+        for table in [
+            "cross_references", "leads", "transactions",
+            "rentals", "bayut_listings", "pf_listings",
+        ]:
             conn.execute(f"DELETE FROM {table}")
         conn.commit()
         conn.close()
-        print("  Tables cleared.")
+        print("  Source tables cleared (app-managed tables preserved).")
     else:
-        print("\n[1/4] Keeping existing data (append mode).")
+        print("\n[1/9] Keeping existing data (append mode).")
 
-    # Step 2: Ingest leads
-    print("\n[2/4] Ingesting leads...")
+    # ---- Source data ----
+    print("\n[2/9] Ingesting leads...")
     lead_stats = ingest_leads_master()
-    if "error" in lead_stats:
-        print(f"  [ERR] Lead ingestion failed: {lead_stats['error']}")
-    else:
-        print(f"  Leads: {lead_stats.get('inserted', 0):,} inserted, "
-              f"{lead_stats.get('skipped_invalid', 0):,} invalid, "
-              f"{lead_stats.get('errors', 0):,} errors")
+    _log_step("Leads", lead_stats, "inserted", "skipped_invalid")
 
-    # Step 3: Ingest transactions
-    print("\n[3/4] Ingesting transactions...")
+    print("\n[3/9] Ingesting transactions...")
     txn_stats = ingest_transactions()
-    if "error" in txn_stats:
-        print(f"  [ERR] Transaction ingestion failed: {txn_stats['error']}")
-    else:
-        print(f"  Transactions: {txn_stats.get('inserted', 0):,} inserted, "
-              f"{txn_stats.get('skipped', 0):,} skipped (no size), "
-              f"{txn_stats.get('errors', 0):,} errors")
+    _log_step("Transactions", txn_stats, "inserted", "skipped")
 
-    # Step 4: Build cross-references
-    print("\n[4/4] Building cross-references...")
+    print("\n[4/9] Ingesting rentals...")
+    rent_stats = ingest_rentals()
+    _log_step("Rentals", rent_stats, "inserted", "skipped")
+
+    print("\n[5/9] Ingesting Bayut listings...")
+    bayut_stats = ingest_bayut_listings()
+    _log_step("Bayut listings", bayut_stats, "inserted", "skipped")
+
+    print("\n[6/9] Ingesting PropertyFinder listings...")
+    pf_stats = ingest_pf_listings()
+    _log_step("PF listings", pf_stats, "inserted", "skipped")
+
+    # ---- App-managed migration (one-shot, safe to re-run) ----
+    print("\n[7/9] Migrating call log (JSON -> SQLite)...")
+    call_stats = ingest_call_log()
+    _log_step("Call log", call_stats, "inserted", "errors")
+
+    print("\n[8/9] Migrating WhatsApp message log (CSV -> SQLite)...")
+    wa_stats = ingest_whatsapp_log()
+    _log_step("WhatsApp messages", wa_stats, "inserted", "errors")
+
+    print("\n[9/9] Building cross-references...")
     xref_stats = build_cross_references()
 
     print("\n" + "=" * 60)
     print(" INGESTION COMPLETE")
     print("=" * 60)
 
-    # Final summary
-    from database import get_table_counts
     counts = get_table_counts()
-    print(f"  leads:            {counts['leads']:,}")
-    print(f"  transactions:     {counts['transactions']:,}")
-    print(f"  cross_references: {counts['cross_references']:,}")
+    for table in [
+        "leads", "transactions", "cross_references",
+        "rentals", "bayut_listings", "pf_listings",
+        "call_log", "whatsapp_messages",
+    ]:
+        print(f"  {table:<22} {counts.get(table, 0):>10,}")
     print("=" * 60)
 
     return {
         "leads": lead_stats,
         "transactions": txn_stats,
+        "rentals": rent_stats,
+        "bayut_listings": bayut_stats,
+        "pf_listings": pf_stats,
+        "call_log": call_stats,
+        "whatsapp_messages": wa_stats,
         "cross_references": xref_stats,
         "table_counts": counts,
     }
+
+
+def _log_step(name: str, stats: Dict, ok_key: str, warn_key: str) -> None:
+    """Compact step logger used by reingest_all -- handles error/skip cases."""
+    if stats.get("error"):
+        if stats.get("skipped"):
+            print(f"  [skip] {name}: {stats['error']}")
+        else:
+            print(f"  [ERR]  {name}: {stats['error']}")
+        return
+    print(
+        f"  {name}: {stats.get(ok_key, 0):,} inserted, "
+        f"{stats.get(warn_key, 0):,} {warn_key.replace('_', ' ')}, "
+        f"{stats.get('errors', 0):,} errors"
+    )
 
 
 # ---------------------------------------------------------------------------

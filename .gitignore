@@ -36,6 +36,9 @@ data/*.db-wal
 data/*.db-shm
 reference_data/*.csv
 
+# Frozen data snapshots (local backups produced by scripts/freeze_snapshot.py)
+data/snapshots/
+
 # Client data (persisted locally)
 client_data/
 

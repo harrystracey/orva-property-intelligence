@@ -221,6 +221,146 @@ CREATE TABLE IF NOT EXISTS contact_lead_links (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(contact_id, lead_id)
 );
+
+-- =========================================================================
+-- Rental contracts (Ejari -- historical from PropertyMonitor)
+-- Live PM scraper has been removed; this table holds the frozen historical
+-- rentals data. Used for market-rent intelligence ("comparable units rent
+-- for X") and lease-expiry pages.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS rentals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    building_name TEXT,
+    building_name_normalized TEXT,
+    unit_number TEXT,
+    unit_number_normalized TEXT,
+    bedrooms TEXT,
+    size_sqft REAL,
+    annual_rent_aed REAL,
+    contract_start_date TEXT,
+    contract_end_date TEXT,
+    floor_level TEXT,
+    view_type TEXT,
+    source TEXT DEFAULT 'property_monitor_historical',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(building_name_normalized, unit_number_normalized, contract_start_date, annual_rent_aed)
+);
+
+-- =========================================================================
+-- Bayut active listings (public scraper -- refreshed on demand)
+-- This table is regenerated each time bayut_scraper runs; uniqueness is
+-- enforced on listing_url so re-scrapes overwrite cleanly.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS bayut_listings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    listing_url TEXT UNIQUE,
+    listing_type TEXT,            -- 'sale' | 'rent'
+    building_name TEXT,
+    building_name_normalized TEXT,
+    unit_number TEXT,
+    unit_type TEXT,               -- 'apartment' | 'villa' | 'penthouse' | etc.
+    bedrooms TEXT,
+    bathrooms TEXT,
+    size_sqft REAL,
+    price_aed REAL,
+    rent_period TEXT,             -- 'yearly' | 'monthly' (rent only)
+    view_type TEXT,
+    agent_name TEXT,
+    agency TEXT,
+    listed_date TEXT,
+    scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =========================================================================
+-- PropertyFinder public listings (public scraper)
+-- Same shape as bayut_listings; separate table because the scrapers run
+-- independently and we want to know which source a listing came from.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS pf_listings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    listing_url TEXT UNIQUE,
+    listing_type TEXT,            -- 'sale' | 'rent'
+    building_name TEXT,
+    building_name_normalized TEXT,
+    unit_number TEXT,
+    bedrooms TEXT,
+    bathrooms TEXT,
+    size_sqft REAL,
+    price_aed REAL,
+    rent_period TEXT,
+    view_type TEXT,
+    permit_number TEXT,
+    owner_name TEXT,              -- if resolved via Replit/permit lookup
+    owner_phone TEXT,
+    agent_name TEXT,
+    agency TEXT,
+    listed_date TEXT,
+    scraped_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =========================================================================
+-- Call log (was client_data/call_log.json)
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS call_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id TEXT,
+    client_name TEXT,
+    building_name TEXT,
+    unit_number TEXT,
+    phone TEXT,
+    outcome TEXT,                 -- voicemail | no_answer | not_interested | interested | callback
+    notes TEXT,
+    called_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    follow_up_reminder_id INTEGER REFERENCES client_reminders(id)
+);
+
+-- =========================================================================
+-- WhatsApp message log (was whatsapp_bot/message_log.csv)
+-- One row per send attempt -- success or failure. Drives the daily
+-- rate-limit (36/day cap).
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS whatsapp_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    phone TEXT,
+    phone_normalized TEXT,
+    owner_name TEXT,
+    building_name TEXT,
+    unit_number TEXT,
+    message_template TEXT,
+    message_body TEXT,
+    status TEXT,                  -- sent | failed | skipped_duplicate | skipped_excluded
+    failure_reason TEXT,
+    campaign_id TEXT,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =========================================================================
+-- Unit registry (derived: leads + sales + rentals + listings merged by
+-- (building, unit_number)). Rebuild this from the source tables; do not
+-- hand-edit. Mirrors what build_unit_registry.py produces today.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS unit_registry (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    building_name TEXT,
+    building_name_normalized TEXT,
+    unit_number TEXT,
+    unit_number_normalized TEXT,
+    bedrooms TEXT,
+    bedrooms_confidence TEXT,     -- HIGH (PM/sales DLD) | MEDIUM (PF/leads/rentals) | LOW
+    bedrooms_source TEXT,
+    size_sqft REAL,
+    floor_level TEXT,
+    view_type TEXT,
+    last_sale_date TEXT,
+    last_sale_price_aed REAL,
+    last_annual_rent_aed REAL,
+    last_rent_date TEXT,
+    sources TEXT,                 -- comma-separated list of contributing sources
+    rebuilt_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(building_name_normalized, unit_number_normalized)
+);
 """
 
 # Indexes are created separately so each can use IF NOT EXISTS
@@ -246,6 +386,41 @@ INDEXES_SQL = [
     "CREATE INDEX IF NOT EXISTS idx_contact_properties_lead ON contact_properties(lead_id)",
     "CREATE INDEX IF NOT EXISTS idx_contact_lead_links_contact ON contact_lead_links(contact_id)",
     "CREATE INDEX IF NOT EXISTS idx_contact_lead_links_lead ON contact_lead_links(lead_id)",
+
+    # Rentals
+    "CREATE INDEX IF NOT EXISTS idx_rentals_building ON rentals(building_name_normalized)",
+    "CREATE INDEX IF NOT EXISTS idx_rentals_unit ON rentals(unit_number_normalized)",
+    "CREATE INDEX IF NOT EXISTS idx_rentals_end_date ON rentals(contract_end_date)",
+    "CREATE INDEX IF NOT EXISTS idx_rentals_bedrooms ON rentals(bedrooms)",
+
+    # Bayut listings
+    "CREATE INDEX IF NOT EXISTS idx_bayut_building ON bayut_listings(building_name_normalized)",
+    "CREATE INDEX IF NOT EXISTS idx_bayut_type ON bayut_listings(listing_type)",
+    "CREATE INDEX IF NOT EXISTS idx_bayut_bedrooms ON bayut_listings(bedrooms)",
+    "CREATE INDEX IF NOT EXISTS idx_bayut_scraped ON bayut_listings(scraped_at)",
+
+    # PF listings
+    "CREATE INDEX IF NOT EXISTS idx_pf_building ON pf_listings(building_name_normalized)",
+    "CREATE INDEX IF NOT EXISTS idx_pf_type ON pf_listings(listing_type)",
+    "CREATE INDEX IF NOT EXISTS idx_pf_bedrooms ON pf_listings(bedrooms)",
+    "CREATE INDEX IF NOT EXISTS idx_pf_permit ON pf_listings(permit_number)",
+    "CREATE INDEX IF NOT EXISTS idx_pf_owner_phone ON pf_listings(owner_phone)",
+
+    # Call log
+    "CREATE INDEX IF NOT EXISTS idx_call_log_client ON call_log(client_id)",
+    "CREATE INDEX IF NOT EXISTS idx_call_log_phone ON call_log(phone)",
+    "CREATE INDEX IF NOT EXISTS idx_call_log_called ON call_log(called_at)",
+
+    # WhatsApp
+    "CREATE INDEX IF NOT EXISTS idx_wa_phone ON whatsapp_messages(phone_normalized)",
+    "CREATE INDEX IF NOT EXISTS idx_wa_status ON whatsapp_messages(status)",
+    "CREATE INDEX IF NOT EXISTS idx_wa_sent ON whatsapp_messages(sent_at)",
+    "CREATE INDEX IF NOT EXISTS idx_wa_campaign ON whatsapp_messages(campaign_id)",
+
+    # Unit registry
+    "CREATE INDEX IF NOT EXISTS idx_registry_building ON unit_registry(building_name_normalized)",
+    "CREATE INDEX IF NOT EXISTS idx_registry_unit ON unit_registry(unit_number_normalized)",
+    "CREATE INDEX IF NOT EXISTS idx_registry_bedrooms ON unit_registry(bedrooms)",
 ]
 
 
@@ -301,7 +476,10 @@ def get_table_counts() -> dict:
     tables = [
         "leads", "transactions", "cross_references",
         "scraped_units", "client_notes", "client_reminders",
-        "contacts", "contact_properties", "contact_lead_links"
+        "contacts", "contact_properties", "contact_lead_links",
+        # Phase 5A SaaS-conversion tables
+        "rentals", "bayut_listings", "pf_listings",
+        "call_log", "whatsapp_messages", "unit_registry",
     ]
     counts = {}
     if not DB_PATH.exists():
