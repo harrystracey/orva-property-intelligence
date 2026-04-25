@@ -51,6 +51,11 @@ from data_processor import (
 )
 from building_intelligence import format_phone_number
 
+# Default tenant for ingestion. Multi-tenant deployments call the public
+# importers with `tenant_id=...`; legacy single-tenant callers (the CLI
+# entry point, migrations) get 'orva' implicitly.
+DEFAULT_TENANT_ID = "orva"
+
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -113,16 +118,24 @@ def _safe_str(val) -> Optional[str]:
 # LEAD INGESTION
 # ---------------------------------------------------------------------------
 
-def ingest_leads_from_dataframe(df: pd.DataFrame, source_file: str, conn: Optional[sqlite3.Connection] = None) -> Dict:
+def ingest_leads_from_dataframe(
+    df: pd.DataFrame,
+    source_file: str,
+    conn: Optional[sqlite3.Connection] = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> Dict:
     """
-    Ingest a pre-normalized leads DataFrame into the database.
+    Ingest a pre-normalized leads DataFrame into the database under
+    `tenant_id` (default 'orva').
 
     Parameters:
-        df:          A DataFrame with standard columns (owner_name, building_name,
-                     unit_number, phone, date, bedrooms, size_sqft, etc.)
-                     -- the same shape produced by data_processor.normalize_dataframe().
+        df:          A DataFrame with standard columns (owner_name,
+                     building_name, unit_number, phone, date, bedrooms,
+                     size_sqft, etc.) -- the same shape produced by
+                     data_processor.normalize_dataframe().
         source_file: Label for the source (e.g. 'leads_master.csv').
         conn:        Optional existing connection. If None, a new one is opened.
+        tenant_id:   Tenant under which these leads belong.
 
     Returns:
         Dict with counts: inserted, skipped_invalid, skipped_duplicate, errors.
@@ -140,8 +153,8 @@ def ingest_leads_from_dataframe(df: pd.DataFrame, source_file: str, conn: Option
             phone, phone_formatted, email,
             date, bedrooms, bedrooms_estimated, bedrooms_source,
             size_sqft, size_estimated, size_source,
-            completeness_score, source_file
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            completeness_score, source_file, tenant_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
 
     batch = []
@@ -212,7 +225,7 @@ def ingest_leads_from_dataframe(df: pd.DataFrame, source_file: str, conn: Option
                 phone_raw, phone_formatted, None,  # email not in current leads
                 date_str, bedrooms_str, beds_estimated, beds_source,
                 size_val, size_estimated, size_source,
-                completeness, source_file
+                completeness, source_file, tenant_id,
             ))
 
             # Insert in batches of 500
@@ -235,7 +248,10 @@ def ingest_leads_from_dataframe(df: pd.DataFrame, source_file: str, conn: Option
 
     # The INSERT OR IGNORE means duplicates are silently skipped.
     # Adjust the count to reflect actual inserts vs unique-constraint skips.
-    actual_count = conn.execute("SELECT COUNT(*) FROM leads WHERE source_file = ?", (source_file,)).fetchone()[0]
+    actual_count = conn.execute(
+        "SELECT COUNT(*) FROM leads WHERE source_file = ? AND tenant_id = ?",
+        (source_file, tenant_id),
+    ).fetchone()[0]
     stats["skipped_duplicate"] = stats["inserted"] - actual_count if stats["inserted"] > actual_count else 0
     stats["inserted"] = actual_count  # Report the real inserted count for this source
 
@@ -245,7 +261,11 @@ def ingest_leads_from_dataframe(df: pd.DataFrame, source_file: str, conn: Option
     return stats
 
 
-def ingest_leads(csv_path: str, source_label: Optional[str] = None) -> Dict:
+def ingest_leads(
+    csv_path: str,
+    source_label: Optional[str] = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> Dict:
     """
     Import a single leads CSV file into the database.
 
@@ -337,14 +357,14 @@ def ingest_leads(csv_path: str, source_label: Optional[str] = None) -> Dict:
 
         print(f"  Normalized {len(result)} rows from {source_label}")
 
-        return ingest_leads_from_dataframe(result, source_label)
+        return ingest_leads_from_dataframe(result, source_label, tenant_id=tenant_id)
 
     except Exception as e:
         traceback.print_exc()
         return {"error": str(e)}
 
 
-def ingest_leads_master() -> Dict:
+def ingest_leads_master(tenant_id: str = DEFAULT_TENANT_ID) -> Dict:
     """
     Import the consolidated leads_master.csv (produced by consolidate_data.py).
     This is the primary entry point for lead data.
@@ -395,7 +415,7 @@ def ingest_leads_master() -> Dict:
         else:
             df["phone"] = ""
 
-        return ingest_leads_from_dataframe(df, "leads_master.csv")
+        return ingest_leads_from_dataframe(df, "leads_master.csv", tenant_id=tenant_id)
 
     except Exception as e:
         traceback.print_exc()
@@ -406,7 +426,10 @@ def ingest_leads_master() -> Dict:
 # TRANSACTION INGESTION
 # ---------------------------------------------------------------------------
 
-def ingest_transactions(csv_path: Optional[str] = None) -> Dict:
+def ingest_transactions(
+    csv_path: Optional[str] = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> Dict:
     """
     Import reference/transaction data into the transactions table.
 
@@ -459,8 +482,8 @@ def ingest_transactions(csv_path: Optional[str] = None) -> Dict:
                 unit_number, unit_number_normalized,
                 transaction_date, price_aed, price_per_sqft,
                 size_sqft, bedrooms, floor_level,
-                property_type, transaction_type, source
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                property_type, transaction_type, source, tenant_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
 
         batch = []
@@ -582,7 +605,7 @@ def ingest_transactions(csv_path: Optional[str] = None) -> Dict:
                     unit_raw, unit_norm,
                     date_val, price_aed, price_psf,
                     size_sqft, bedrooms_str, floor_val,
-                    property_type, transaction_type, source
+                    property_type, transaction_type, source, tenant_id,
                 ))
 
                 if len(batch) >= 500:
@@ -603,7 +626,10 @@ def ingest_transactions(csv_path: Optional[str] = None) -> Dict:
         conn.commit()
 
         # Get actual count (INSERT OR IGNORE skips dupes silently)
-        actual = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+        actual = conn.execute(
+            "SELECT COUNT(*) FROM transactions WHERE tenant_id = ?",
+            (tenant_id,),
+        ).fetchone()[0]
         stats["inserted"] = actual
         conn.close()
 
@@ -619,32 +645,26 @@ def ingest_transactions(csv_path: Optional[str] = None) -> Dict:
 # CROSS-REFERENCE BUILDER
 # ---------------------------------------------------------------------------
 
-def build_cross_references() -> Dict:
+def build_cross_references(tenant_id: str = DEFAULT_TENANT_ID) -> Dict:
     """
-    Precompute matches between leads and transactions based on
-    building_name_normalized + unit_number_normalized.
-
-    Match methods:
-        'exact_unit'    - Both building and unit match exactly (confidence 1.0)
-        'fuzzy_unit'    - Building matches, unit is close but not exact (confidence 0.7)
-        'building_only' - Building matches, no unit match possible (confidence 0.3)
-
-    Returns:
-        Dict with counts of each match type.
+    Precompute matches between leads and transactions for `tenant_id`.
+    Cross-references stay tenant-scoped: a lead in tenant A can never
+    match a transaction in tenant B.
     """
     conn = get_connection()
     stats = {"exact_unit": 0, "fuzzy_unit": 0, "building_only": 0, "errors": 0}
 
     try:
-        # Clear existing cross-references (full rebuild each time)
-        conn.execute("DELETE FROM cross_references")
+        # Clear existing cross-references for this tenant (full rebuild)
+        conn.execute(
+            "DELETE FROM cross_references WHERE tenant_id = ?",
+            (tenant_id,),
+        )
 
-        # ------------------------------------------------------------------
-        # Pass 1: Exact building + unit matches (highest confidence)
-        # ------------------------------------------------------------------
         exact_sql = """
-            INSERT OR IGNORE INTO cross_references (lead_id, transaction_id, match_confidence, match_method)
-            SELECT l.id, t.id, 1.0, 'exact_unit'
+            INSERT OR IGNORE INTO cross_references
+                (lead_id, transaction_id, match_confidence, match_method, tenant_id)
+            SELECT l.id, t.id, 1.0, 'exact_unit', ?
             FROM leads l
             JOIN transactions t
               ON l.building_name_normalized = t.building_name_normalized
@@ -652,33 +672,42 @@ def build_cross_references() -> Dict:
             WHERE l.building_name_normalized IS NOT NULL
               AND l.unit_number_normalized IS NOT NULL
               AND t.unit_number_normalized IS NOT NULL
+              AND l.tenant_id = ?
+              AND t.tenant_id = ?
         """
-        cursor = conn.execute(exact_sql)
+        cursor = conn.execute(exact_sql, (tenant_id, tenant_id, tenant_id))
         stats["exact_unit"] = cursor.rowcount
         print(f"  Exact unit matches: {stats['exact_unit']:,}")
 
-        # ------------------------------------------------------------------
-        # Pass 2: Building-only matches (for leads that didn't match above)
-        # These are weaker matches -- same building but we can't confirm the unit.
-        # Only create these for leads that have no exact match.
-        # ------------------------------------------------------------------
         building_only_sql = """
-            INSERT OR IGNORE INTO cross_references (lead_id, transaction_id, match_confidence, match_method)
-            SELECT l.id, t.id, 0.3, 'building_only'
+            INSERT OR IGNORE INTO cross_references
+                (lead_id, transaction_id, match_confidence, match_method, tenant_id)
+            SELECT l.id, t.id, 0.3, 'building_only', ?
             FROM leads l
             JOIN transactions t
               ON l.building_name_normalized = t.building_name_normalized
             WHERE l.building_name_normalized IS NOT NULL
-              AND l.id NOT IN (SELECT lead_id FROM cross_references WHERE match_method = 'exact_unit')
+              AND l.tenant_id = ?
+              AND t.tenant_id = ?
+              AND l.id NOT IN (
+                  SELECT lead_id FROM cross_references
+                  WHERE match_method = 'exact_unit' AND tenant_id = ?
+              )
               AND (l.unit_number_normalized IS NULL OR t.unit_number_normalized IS NULL)
         """
-        cursor = conn.execute(building_only_sql)
+        cursor = conn.execute(
+            building_only_sql,
+            (tenant_id, tenant_id, tenant_id, tenant_id),
+        )
         stats["building_only"] = cursor.rowcount
         print(f"  Building-only matches: {stats['building_only']:,}")
 
         conn.commit()
 
-        total = conn.execute("SELECT COUNT(*) FROM cross_references").fetchone()[0]
+        total = conn.execute(
+            "SELECT COUNT(*) FROM cross_references WHERE tenant_id = ?",
+            (tenant_id,),
+        ).fetchone()[0]
         stats["total"] = total
         print(f"  Total cross-references: {total:,}")
 
@@ -699,7 +728,10 @@ def build_cross_references() -> Dict:
 RENTALS_PATH = Path("scraped_data/palm_jumeirah_rentals.csv")
 
 
-def ingest_rentals(csv_path: Optional[str] = None) -> Dict:
+def ingest_rentals(
+    csv_path: Optional[str] = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> Dict:
     """
     Import historical Ejari rental contracts into the rentals table.
     PropertyMonitor live scraping has been removed; this is a one-shot
@@ -748,8 +780,8 @@ def ingest_rentals(csv_path: Optional[str] = None) -> Dict:
             unit_number, unit_number_normalized,
             bedrooms, size_sqft, annual_rent_aed,
             contract_start_date, contract_end_date,
-            floor_level, view_type, source
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            floor_level, view_type, source, tenant_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     batch = []
     stats = {"inserted": 0, "skipped": 0, "errors": 0, "total": len(df)}
@@ -777,7 +809,7 @@ def ingest_rentals(csv_path: Optional[str] = None) -> Dict:
             batch.append((
                 building_raw, building_norm, unit_raw, unit_norm,
                 beds, size, rent, start_date, end_date,
-                floor, view, "property_monitor_historical",
+                floor, view, "property_monitor_historical", tenant_id,
             ))
             if len(batch) >= 500:
                 conn.executemany(insert_sql, batch)
@@ -792,7 +824,10 @@ def ingest_rentals(csv_path: Optional[str] = None) -> Dict:
         conn.executemany(insert_sql, batch)
         stats["inserted"] += len(batch)
     conn.commit()
-    actual = conn.execute("SELECT COUNT(*) FROM rentals").fetchone()[0]
+    actual = conn.execute(
+        "SELECT COUNT(*) FROM rentals WHERE tenant_id = ?",
+        (tenant_id,),
+    ).fetchone()[0]
     stats["inserted"] = actual
     conn.close()
     print(f"  Rentals ingested: {actual:,} rows")
@@ -806,10 +841,13 @@ def ingest_rentals(csv_path: Optional[str] = None) -> Dict:
 BAYUT_PATH = Path("data/bayut_palm_listings.csv")
 
 
-def ingest_bayut_listings(csv_path: Optional[str] = None) -> Dict:
+def ingest_bayut_listings(
+    csv_path: Optional[str] = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> Dict:
     """
-    Import the latest scraped Bayut listings. Replaces the table on each
-    full run -- Bayut listings are time-sensitive market data, not history.
+    Import the latest scraped Bayut listings. Replaces this tenant's rows on
+    each full run -- Bayut listings are time-sensitive market data, not history.
     """
     path = Path(csv_path) if csv_path else BAYUT_PATH
     if not path.exists():
@@ -845,8 +883,8 @@ def ingest_bayut_listings(csv_path: Optional[str] = None) -> Dict:
     col_listed     = _col("listed_date", "date_listed")
 
     conn = get_connection()
-    # Replace strategy: clear table, insert fresh
-    conn.execute("DELETE FROM bayut_listings")
+    # Replace strategy: clear this tenant's rows, insert fresh.
+    conn.execute("DELETE FROM bayut_listings WHERE tenant_id = ?", (tenant_id,))
     conn.commit()
 
     insert_sql = """
@@ -855,8 +893,8 @@ def ingest_bayut_listings(csv_path: Optional[str] = None) -> Dict:
             building_name, building_name_normalized,
             unit_number, unit_type,
             bedrooms, bathrooms, size_sqft, price_aed,
-            rent_period, view_type, agent_name, agency, listed_date
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            rent_period, view_type, agent_name, agency, listed_date, tenant_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     batch = []
     stats = {"inserted": 0, "skipped": 0, "errors": 0, "total": len(df)}
@@ -884,6 +922,7 @@ def ingest_bayut_listings(csv_path: Optional[str] = None) -> Dict:
                 _safe_str(row.get(col_agent)) if col_agent else None,
                 _safe_str(row.get(col_agency)) if col_agency else None,
                 _safe_str(row.get(col_listed)) if col_listed else None,
+                tenant_id,
             ))
             if len(batch) >= 500:
                 conn.executemany(insert_sql, batch)
@@ -898,7 +937,10 @@ def ingest_bayut_listings(csv_path: Optional[str] = None) -> Dict:
         conn.executemany(insert_sql, batch)
         stats["inserted"] += len(batch)
     conn.commit()
-    actual = conn.execute("SELECT COUNT(*) FROM bayut_listings").fetchone()[0]
+    actual = conn.execute(
+        "SELECT COUNT(*) FROM bayut_listings WHERE tenant_id = ?",
+        (tenant_id,),
+    ).fetchone()[0]
     stats["inserted"] = actual
     conn.close()
     print(f"  Bayut listings ingested: {actual:,} rows")
@@ -912,10 +954,13 @@ def ingest_bayut_listings(csv_path: Optional[str] = None) -> Dict:
 PF_PATH = Path("scraped_data/propertyfinder_scraped_leads.csv")
 
 
-def ingest_pf_listings(csv_path: Optional[str] = None) -> Dict:
+def ingest_pf_listings(
+    csv_path: Optional[str] = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> Dict:
     """
     Import PropertyFinder scraper output. Same replace-on-load semantics
-    as Bayut.
+    as Bayut, scoped to tenant.
     """
     path = Path(csv_path) if csv_path else PF_PATH
     if not path.exists():
@@ -953,7 +998,7 @@ def ingest_pf_listings(csv_path: Optional[str] = None) -> Dict:
     col_listed      = _col("listed_date", "date_listed")
 
     conn = get_connection()
-    conn.execute("DELETE FROM pf_listings")
+    conn.execute("DELETE FROM pf_listings WHERE tenant_id = ?", (tenant_id,))
     conn.commit()
 
     insert_sql = """
@@ -962,8 +1007,8 @@ def ingest_pf_listings(csv_path: Optional[str] = None) -> Dict:
             building_name, building_name_normalized,
             unit_number, bedrooms, bathrooms, size_sqft, price_aed,
             rent_period, view_type, permit_number,
-            owner_name, owner_phone, agent_name, agency, listed_date
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            owner_name, owner_phone, agent_name, agency, listed_date, tenant_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     batch = []
     stats = {"inserted": 0, "skipped": 0, "errors": 0, "total": len(df)}
@@ -993,6 +1038,7 @@ def ingest_pf_listings(csv_path: Optional[str] = None) -> Dict:
                 _safe_str(row.get(col_agent)) if col_agent else None,
                 _safe_str(row.get(col_agency)) if col_agency else None,
                 _safe_str(row.get(col_listed)) if col_listed else None,
+                tenant_id,
             ))
             if len(batch) >= 500:
                 conn.executemany(insert_sql, batch)
@@ -1007,7 +1053,10 @@ def ingest_pf_listings(csv_path: Optional[str] = None) -> Dict:
         conn.executemany(insert_sql, batch)
         stats["inserted"] += len(batch)
     conn.commit()
-    actual = conn.execute("SELECT COUNT(*) FROM pf_listings").fetchone()[0]
+    actual = conn.execute(
+        "SELECT COUNT(*) FROM pf_listings WHERE tenant_id = ?",
+        (tenant_id,),
+    ).fetchone()[0]
     stats["inserted"] = actual
     conn.close()
     print(f"  PF listings ingested: {actual:,} rows")
@@ -1021,10 +1070,10 @@ def ingest_pf_listings(csv_path: Optional[str] = None) -> Dict:
 CALL_LOG_PATH = Path("client_data/call_log.json")
 
 
-def ingest_call_log() -> Dict:
+def ingest_call_log(tenant_id: str = DEFAULT_TENANT_ID) -> Dict:
     """
-    One-shot: migrate client_data/call_log.json into the call_log table.
-    Safe to re-run -- INSERT OR IGNORE on the natural key.
+    One-shot: migrate client_data/call_log.json into the call_log table
+    under `tenant_id`. Safe to re-run.
     """
     import json
     if not CALL_LOG_PATH.exists():
@@ -1042,8 +1091,8 @@ def ingest_call_log() -> Dict:
     insert_sql = """
         INSERT INTO call_log (
             client_id, client_name, building_name, unit_number, phone,
-            outcome, notes, called_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            outcome, notes, called_at, tenant_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     stats = {"inserted": 0, "errors": 0, "total": len(calls)}
     batch = []
@@ -1069,6 +1118,7 @@ def ingest_call_log() -> Dict:
                 c.get("outcome"),
                 c.get("notes"),
                 c.get("called_at") or c.get("timestamp") or c.get("date"),
+                tenant_id,
             ))
             if len(batch) >= 500:
                 conn.executemany(insert_sql, batch)
@@ -1095,11 +1145,11 @@ def ingest_call_log() -> Dict:
 WA_LOG_PATH = Path("whatsapp_bot/message_log.csv")
 
 
-def ingest_whatsapp_log() -> Dict:
+def ingest_whatsapp_log(tenant_id: str = DEFAULT_TENANT_ID) -> Dict:
     """
-    One-shot: migrate whatsapp_bot/message_log.csv into whatsapp_messages.
-    The CSV stays as a fallback / human-readable backup; SQLite becomes
-    the source of truth for rate-limit checks once cutover lands.
+    One-shot: migrate whatsapp_bot/message_log.csv into whatsapp_messages
+    under `tenant_id`. The CSV stays as a fallback / human-readable backup;
+    SQLite becomes the source of truth for rate-limit checks once cutover lands.
     """
     if not WA_LOG_PATH.exists():
         return {"error": "message_log.csv not found", "skipped": True}
@@ -1134,8 +1184,8 @@ def ingest_whatsapp_log() -> Dict:
         INSERT INTO whatsapp_messages (
             phone, phone_normalized, owner_name, building_name, unit_number,
             message_template, message_body, status, failure_reason,
-            campaign_id, sent_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            campaign_id, sent_at, tenant_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     stats = {"inserted": 0, "errors": 0, "total": len(df)}
     batch = []
@@ -1154,6 +1204,7 @@ def ingest_whatsapp_log() -> Dict:
                 _safe_str(row.get(col_reason)) if col_reason else None,
                 _safe_str(row.get(col_campaign)) if col_campaign else None,
                 _safe_str(row.get(col_sent_at)) if col_sent_at else None,
+                tenant_id,
             ))
             if len(batch) >= 500:
                 conn.executemany(insert_sql, batch)
@@ -1177,37 +1228,33 @@ def ingest_whatsapp_log() -> Dict:
 # FULL RE-INGESTION PIPELINE
 # ---------------------------------------------------------------------------
 
-def reingest_all(clear_existing: bool = True) -> Dict:
+def reingest_all(
+    clear_existing: bool = True,
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> Dict:
     """
-    Full pipeline: clear tables (optional), ingest every source, build
-    cross-references.
+    Full pipeline for `tenant_id`: clear that tenant's source tables,
+    ingest every source, build cross-references. App-managed tables
+    (notes, reminders, contacts, call_log, whatsapp_messages) are
+    preserved across re-runs.
 
-    Each step degrades gracefully -- if a source CSV is missing the step
-    is skipped (logged) rather than failing the whole run.
-
-    Parameters:
-        clear_existing: If True, wipe existing data before inserting.
-
-    Returns:
-        Combined stats dict.
+    Each step degrades gracefully -- if a source CSV is missing, the
+    step is logged and skipped instead of crashing the whole run.
     """
     print("=" * 60)
-    print(" DATA INGESTION PIPELINE")
+    print(f" DATA INGESTION PIPELINE (tenant_id={tenant_id})")
     print("=" * 60)
 
     init_database()
 
     if clear_existing:
-        print("\n[1/9] Clearing existing data...")
+        print("\n[1/9] Clearing this tenant's source data...")
         conn = get_connection()
-        # Note: we deliberately do NOT clear app-managed tables (notes,
-        # reminders, contacts, contact_lead_links, call_log, whatsapp_messages)
-        # -- those are user-generated and live forever.
         for table in [
             "cross_references", "leads", "transactions",
             "rentals", "bayut_listings", "pf_listings",
         ]:
-            conn.execute(f"DELETE FROM {table}")
+            conn.execute(f"DELETE FROM {table} WHERE tenant_id = ?", (tenant_id,))
         conn.commit()
         conn.close()
         print("  Source tables cleared (app-managed tables preserved).")
@@ -1216,36 +1263,36 @@ def reingest_all(clear_existing: bool = True) -> Dict:
 
     # ---- Source data ----
     print("\n[2/9] Ingesting leads...")
-    lead_stats = ingest_leads_master()
+    lead_stats = ingest_leads_master(tenant_id=tenant_id)
     _log_step("Leads", lead_stats, "inserted", "skipped_invalid")
 
     print("\n[3/9] Ingesting transactions...")
-    txn_stats = ingest_transactions()
+    txn_stats = ingest_transactions(tenant_id=tenant_id)
     _log_step("Transactions", txn_stats, "inserted", "skipped")
 
     print("\n[4/9] Ingesting rentals...")
-    rent_stats = ingest_rentals()
+    rent_stats = ingest_rentals(tenant_id=tenant_id)
     _log_step("Rentals", rent_stats, "inserted", "skipped")
 
     print("\n[5/9] Ingesting Bayut listings...")
-    bayut_stats = ingest_bayut_listings()
+    bayut_stats = ingest_bayut_listings(tenant_id=tenant_id)
     _log_step("Bayut listings", bayut_stats, "inserted", "skipped")
 
     print("\n[6/9] Ingesting PropertyFinder listings...")
-    pf_stats = ingest_pf_listings()
+    pf_stats = ingest_pf_listings(tenant_id=tenant_id)
     _log_step("PF listings", pf_stats, "inserted", "skipped")
 
     # ---- App-managed migration (one-shot, safe to re-run) ----
     print("\n[7/9] Migrating call log (JSON -> SQLite)...")
-    call_stats = ingest_call_log()
+    call_stats = ingest_call_log(tenant_id=tenant_id)
     _log_step("Call log", call_stats, "inserted", "errors")
 
     print("\n[8/9] Migrating WhatsApp message log (CSV -> SQLite)...")
-    wa_stats = ingest_whatsapp_log()
+    wa_stats = ingest_whatsapp_log(tenant_id=tenant_id)
     _log_step("WhatsApp messages", wa_stats, "inserted", "errors")
 
     print("\n[9/9] Building cross-references...")
-    xref_stats = build_cross_references()
+    xref_stats = build_cross_references(tenant_id=tenant_id)
 
     print("\n" + "=" * 60)
     print(" INGESTION COMPLETE")

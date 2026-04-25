@@ -31,6 +31,11 @@ CONTACT_CLIENT_ID_PREFIX = "CONTACT:"
 INTENT_VALUES = ("selling", "renting", "buying", "renting_looking")
 PF_LEADS_CSV = Path(__file__).resolve().parent / "scraped_data" / "propertyfinder_scraped_leads.csv"
 
+# Default tenant for legacy callers that don't pass `tenant_id`. Mirrors
+# the DEFAULT value on the `tenant_id` column added in Phase 6 -- so a
+# single-tenant deployment keeps behaving exactly as before.
+DEFAULT_TENANT_ID = "orva"
+
 
 def resolve_unit_specs(building_name: Optional[str], unit_number: Optional[str]) -> Dict[str, Optional[str]]:
     """
@@ -111,28 +116,34 @@ def create_contact(
     agent_assigned: Optional[str] = None,
     properties: Optional[List[Dict[str, Any]]] = None,
     leads_df: Optional[Any] = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
 ) -> Tuple[Optional[int], Optional[str]]:
     """
-    Create a contact. Optionally link to leads by phone (if leads_df or DB leads).
-    properties: list of dicts with keys building_name, unit_number, bedrooms, bathrooms,
-                price_aed, intent, view_type, notes (all optional).
-    Returns (contact_id, error_message). error_message is set on duplicate (phone+full_name).
+    Create a contact under `tenant_id`. Optionally link to leads by phone.
+    properties: list of dicts with keys building_name, unit_number, bedrooms,
+                bathrooms, price_aed, intent, view_type, notes (all optional).
+    Returns (contact_id, error_message). error_message is set on duplicate
+    (phone+full_name).
+
+    NOTE on multi-tenant: the `contacts.UNIQUE(phone, full_name)` constraint
+    is global (not per-tenant). Two tenants storing the same phone+name will
+    collide. Recreating the table with UNIQUE(tenant_id, phone, full_name)
+    is a follow-up migration; it doesn't matter while ORVA is single-tenant.
     """
     conn = get_connection()
     try:
         full_name = (full_name or "").strip() or None
         phone = (phone or "").strip() or None
         email = (email or "").strip() or None
-        # Allow duplicate (phone, full_name) only if both are None/empty - SQLite UNIQUE allows multiple NULLs
-        # For empty string we treat as NULL for uniqueness
         name_for_unique = full_name or None
         phone_for_unique = phone or None
 
         cur = conn.execute(
             """INSERT INTO contacts (
                 full_name, phone, email, contact_type, source,
-                budget_min, budget_max, agent_assigned, last_contact_date
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                budget_min, budget_max, agent_assigned, last_contact_date,
+                tenant_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 name_for_unique,
                 phone_for_unique,
@@ -143,6 +154,7 @@ def create_contact(
                 budget_max,
                 agent_assigned,
                 None,
+                tenant_id,
             ),
         )
         contact_id = cur.lastrowid
@@ -169,48 +181,76 @@ def create_contact(
                 view_type=prop.get("view_type"),
                 notes=prop.get("notes"),
                 lead_id=prop.get("lead_id"),
+                tenant_id=tenant_id,
             )
 
     # Auto-link to leads by phone (and optionally merge portfolio from leads_df or DB)
-    link_contact_to_leads(contact_id, leads_df=leads_df)
+    link_contact_to_leads(contact_id, leads_df=leads_df, tenant_id=tenant_id)
 
     return (contact_id, None)
 
 
-def get_contact(contact_id: int, include_properties: bool = True, include_linked_leads: bool = True) -> Optional[Dict[str, Any]]:
-    """Fetch contact by ID. Optionally include properties and linked leads."""
+def get_contact(
+    contact_id: int,
+    include_properties: bool = True,
+    include_linked_leads: bool = True,
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> Optional[Dict[str, Any]]:
+    """Fetch contact by ID, scoped to `tenant_id`. Optionally include
+    properties and linked leads."""
     conn = get_connection(readonly=True)
     try:
-        row = conn.execute("SELECT * FROM contacts WHERE id = ?", (contact_id,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM contacts WHERE id = ? AND tenant_id = ?",
+            (contact_id, tenant_id),
+        ).fetchone()
         if not row:
             return None
         contact = dict(row)
         if include_properties:
-            contact["properties"] = get_contact_properties(contact_id)
+            contact["properties"] = get_contact_properties(contact_id, tenant_id=tenant_id)
         if include_linked_leads:
-            contact["linked_leads"] = get_linked_leads(contact_id)
+            contact["linked_leads"] = get_linked_leads(contact_id, tenant_id=tenant_id)
         return contact
     finally:
         conn.close()
 
 
-def get_contact_properties(contact_id: int) -> List[Dict[str, Any]]:
-    """Return all contact_properties for a contact."""
+def get_contact_properties(
+    contact_id: int,
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> List[Dict[str, Any]]:
+    """Return all contact_properties for a contact, scoped to tenant."""
     conn = get_connection(readonly=True)
     try:
         rows = conn.execute(
-            "SELECT * FROM contact_properties WHERE contact_id = ? ORDER BY id",
-            (contact_id,),
+            """SELECT cp.* FROM contact_properties cp
+               JOIN contacts c ON c.id = cp.contact_id
+               WHERE cp.contact_id = ? AND c.tenant_id = ?
+               ORDER BY cp.id""",
+            (contact_id, tenant_id),
         ).fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()
 
 
-def get_linked_leads(contact_id: int) -> List[Dict[str, Any]]:
-    """Return linked lead records (id, lead_id, match_confidence, match_method). Includes lead row if in DB."""
+def get_linked_leads(
+    contact_id: int,
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> List[Dict[str, Any]]:
+    """Return linked lead records (id, lead_id, match_confidence, match_method).
+    Scoped to tenant via the contacts table -- a contact owned by another
+    tenant can't have its links exposed."""
     conn = get_connection(readonly=True)
     try:
+        # Verify the contact belongs to this tenant first
+        owner_row = conn.execute(
+            "SELECT 1 FROM contacts WHERE id = ? AND tenant_id = ?",
+            (contact_id, tenant_id),
+        ).fetchone()
+        if not owner_row:
+            return []
         links = conn.execute(
             "SELECT id, lead_id, match_confidence, match_method FROM contact_lead_links WHERE contact_id = ?",
             (contact_id,),
@@ -236,16 +276,20 @@ def update_contact(
     budget_min: Optional[float] = None,
     budget_max: Optional[float] = None,
     agent_assigned: Optional[str] = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
 ) -> bool:
-    """Update contact fields. Pass None to leave unchanged."""
+    """Update contact fields, scoped to tenant. Pass None to leave unchanged.
+    Returns False if no contact with that id exists in this tenant."""
     conn = get_connection()
     try:
-        row = conn.execute("SELECT * FROM contacts WHERE id = ?", (contact_id,)).fetchone()
+        row = conn.execute(
+            "SELECT id FROM contacts WHERE id = ? AND tenant_id = ?",
+            (contact_id, tenant_id),
+        ).fetchone()
         if not row:
             return False
-        row = dict(row)
         updates = []
-        values = []
+        values: list = []
         if full_name is not None:
             updates.append("full_name = ?")
             values.append((full_name or "").strip() or None)
@@ -273,9 +317,9 @@ def update_contact(
         if not updates:
             return True
         updates.append("updated_at = CURRENT_TIMESTAMP")
-        values.append(contact_id)
+        values.extend([contact_id, tenant_id])
         conn.execute(
-            f"UPDATE contacts SET {', '.join(updates)} WHERE id = ?",
+            f"UPDATE contacts SET {', '.join(updates)} WHERE id = ? AND tenant_id = ?",
             values,
         )
         conn.commit()
@@ -284,21 +328,35 @@ def update_contact(
         conn.close()
 
 
-def delete_contact(contact_id: int) -> bool:
-    """Delete contact and its contact_properties and contact_lead_links (hard delete)."""
+def delete_contact(contact_id: int, tenant_id: str = DEFAULT_TENANT_ID) -> bool:
+    """Delete contact (and its properties + lead links) scoped to tenant."""
     conn = get_connection()
     try:
+        # Verify ownership first so we don't accidentally cascade-delete a
+        # different tenant's lead links via the contact_id alone.
+        row = conn.execute(
+            "SELECT id FROM contacts WHERE id = ? AND tenant_id = ?",
+            (contact_id, tenant_id),
+        ).fetchone()
+        if not row:
+            return False
         conn.execute("DELETE FROM contact_lead_links WHERE contact_id = ?", (contact_id,))
         conn.execute("DELETE FROM contact_properties WHERE contact_id = ?", (contact_id,))
-        conn.execute("DELETE FROM contacts WHERE id = ?", (contact_id,))
+        conn.execute(
+            "DELETE FROM contacts WHERE id = ? AND tenant_id = ?",
+            (contact_id, tenant_id),
+        )
         conn.commit()
         return True
     finally:
         conn.close()
 
 
-def get_contact_by_phone(phone: str) -> Optional[Dict[str, Any]]:
-    """Find contact by phone (normalized: digits only). Returns first match."""
+def get_contact_by_phone(
+    phone: str,
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> Optional[Dict[str, Any]]:
+    """Find contact by phone within a tenant (normalized: digits only)."""
     if not phone or not str(phone).strip():
         return None
     digits = re.sub(r"\D", "", str(phone))
@@ -306,7 +364,10 @@ def get_contact_by_phone(phone: str) -> Optional[Dict[str, Any]]:
         return None
     conn = get_connection(readonly=True)
     try:
-        rows = conn.execute("SELECT * FROM contacts WHERE phone IS NOT NULL AND phone != ''").fetchall()
+        rows = conn.execute(
+            "SELECT * FROM contacts WHERE phone IS NOT NULL AND phone != '' AND tenant_id = ?",
+            (tenant_id,),
+        ).fetchall()
         for row in rows:
             row_digits = re.sub(r"\D", "", str(row["phone"] or ""))
             if row_digits and row_digits == digits:
@@ -333,8 +394,23 @@ def add_property_to_contact(
     lead_id: Optional[int] = None,
     is_scraped_listing: bool = False,
     scraped_listing_url: Optional[str] = None,
-) -> int:
-    """Add a property to a contact. Runs merge_scraped_listing if building+unit given. Returns contact_properties.id."""
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> Optional[int]:
+    """Add a property to a contact (must belong to `tenant_id`). Runs
+    merge_scraped_listing if building+unit given. Returns
+    contact_properties.id, or None if the contact doesn't belong to
+    this tenant."""
+    # Verify ownership before mutating
+    _conn = get_connection(readonly=True)
+    try:
+        row = _conn.execute(
+            "SELECT 1 FROM contacts WHERE id = ? AND tenant_id = ?",
+            (contact_id, tenant_id),
+        ).fetchone()
+        if not row:
+            return None
+    finally:
+        _conn.close()
     if building_name or unit_number:
         scraped = merge_scraped_listing(building_name or "", unit_number or "")
         if scraped:
@@ -353,8 +429,8 @@ def add_property_to_contact(
             """INSERT INTO contact_properties (
                 contact_id, building_name, unit_number, bedrooms, bathrooms,
                 price_aed, intent, view_type, notes, lead_id,
-                is_scraped_listing, scraped_listing_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                is_scraped_listing, scraped_listing_url, tenant_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 contact_id,
                 (building_name or "").strip() or None,
@@ -368,6 +444,7 @@ def add_property_to_contact(
                 lead_id,
                 1 if is_scraped_listing else 0,
                 (scraped_listing_url or "").strip() or None,
+                tenant_id,
             ),
         )
         pid = cur.lastrowid
@@ -387,15 +464,22 @@ def update_contact_property(
     intent: Optional[str] = None,
     view_type: Optional[str] = None,
     notes: Optional[str] = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
 ) -> bool:
-    """Update a contact_property by id."""
+    """Update a contact_property by id, scoped to tenant."""
     conn = get_connection()
     try:
-        row = conn.execute("SELECT id FROM contact_properties WHERE id = ?", (property_id,)).fetchone()
+        # Verify the property belongs to a contact owned by this tenant
+        row = conn.execute(
+            """SELECT cp.id FROM contact_properties cp
+               JOIN contacts c ON c.id = cp.contact_id
+               WHERE cp.id = ? AND c.tenant_id = ?""",
+            (property_id, tenant_id),
+        ).fetchone()
         if not row:
             return False
         updates = []
-        values = []
+        values: list = []
         for col, val in (
             ("building_name", building_name),
             ("unit_number", unit_number),
@@ -423,10 +507,22 @@ def update_contact_property(
         conn.close()
 
 
-def remove_property_from_contact(property_id: int) -> bool:
-    """Remove a contact_property by id."""
+def remove_property_from_contact(
+    property_id: int,
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> bool:
+    """Remove a contact_property by id, scoped to tenant."""
     conn = get_connection()
     try:
+        # Verify ownership via the contact
+        row = conn.execute(
+            """SELECT cp.id FROM contact_properties cp
+               JOIN contacts c ON c.id = cp.contact_id
+               WHERE cp.id = ? AND c.tenant_id = ?""",
+            (property_id, tenant_id),
+        ).fetchone()
+        if not row:
+            return False
         conn.execute("DELETE FROM contact_properties WHERE id = ?", (property_id,))
         conn.commit()
         return True
@@ -434,10 +530,14 @@ def remove_property_from_contact(property_id: int) -> bool:
         conn.close()
 
 
-def get_contact_portfolio(contact_id: int) -> List[Dict[str, Any]]:
-    """All properties for contact (contact_properties + linked lead properties as summary)."""
-    props = get_contact_properties(contact_id)
-    linked = get_linked_leads(contact_id)
+def get_contact_portfolio(
+    contact_id: int,
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> List[Dict[str, Any]]:
+    """All properties for contact (contact_properties + linked lead properties
+    as summary), scoped to tenant."""
+    props = get_contact_properties(contact_id, tenant_id=tenant_id)
+    linked = get_linked_leads(contact_id, tenant_id=tenant_id)
     for link in linked:
         lead = link.get("lead")
         if not lead:
@@ -468,12 +568,22 @@ def get_contact_portfolio(contact_id: int) -> List[Dict[str, Any]]:
 # Lead linking
 # ---------------------------------------------------------------------------
 
-def link_contact_to_leads(contact_id: int, leads_df: Optional[Any] = None) -> List[int]:
+def link_contact_to_leads(
+    contact_id: int,
+    leads_df: Optional[Any] = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> List[int]:
     """
     Link contact to leads by phone (and optionally by name). Uses leads_df if provided,
-    else queries DB leads table. Returns list of lead_ids linked.
+    else queries DB leads table. Scoped to tenant -- only the caller's contact is
+    linked, and only to leads in the same tenant. Returns list of lead_ids linked.
     """
-    contact = get_contact(contact_id, include_properties=False, include_linked_leads=True)
+    contact = get_contact(
+        contact_id,
+        include_properties=False,
+        include_linked_leads=True,
+        tenant_id=tenant_id,
+    )
     if not contact:
         return []
     phone = (contact.get("phone") or "").strip()
@@ -493,7 +603,7 @@ def link_contact_to_leads(contact_id: int, leads_df: Optional[Any] = None) -> Li
             if normalize_phone(lead_phone) == phone_digits and phone_digits:
                 lead_id = row.get("id")
                 if lead_id is not None and lead_id not in already_linked:
-                    _link_one_lead(contact_id, int(lead_id), 1.0, "phone_match")
+                    _link_one_lead(contact_id, int(lead_id), 1.0, "phone_match", tenant_id=tenant_id)
                     linked_ids.append(int(lead_id))
                     already_linked.add(int(lead_id))
         # Match by owner_name if we have name
@@ -503,33 +613,34 @@ def link_contact_to_leads(contact_id: int, leads_df: Optional[Any] = None) -> Li
                 if owner == full_name:
                     lead_id = row.get("id")
                     if lead_id is not None and lead_id not in already_linked:
-                        _link_one_lead(contact_id, int(lead_id), 0.8, "name_match")
+                        _link_one_lead(contact_id, int(lead_id), 0.8, "name_match", tenant_id=tenant_id)
                         linked_ids.append(int(lead_id))
                         already_linked.add(int(lead_id))
     else:
-        # Query DB leads
+        # Query DB leads (scoped to tenant)
         conn = get_connection()
         try:
             if phone_digits:
                 rows = conn.execute(
-                    "SELECT id, phone, phone_formatted, owner_name FROM leads"
+                    "SELECT id, phone, phone_formatted, owner_name FROM leads WHERE tenant_id = ?",
+                    (tenant_id,),
                 ).fetchall()
                 for row in rows:
                     if normalize_phone(row["phone"] or row["phone_formatted"] or "") == phone_digits:
                         lid = row["id"]
                         if lid not in already_linked:
-                            _link_one_lead(contact_id, lid, 1.0, "phone_match")
+                            _link_one_lead(contact_id, lid, 1.0, "phone_match", tenant_id=tenant_id)
                             linked_ids.append(lid)
                             already_linked.add(lid)
             if full_name:
                 rows = conn.execute(
-                    "SELECT id, owner_name FROM leads WHERE LOWER(TRIM(owner_name)) = ?",
-                    (full_name,),
+                    "SELECT id, owner_name FROM leads WHERE LOWER(TRIM(owner_name)) = ? AND tenant_id = ?",
+                    (full_name, tenant_id),
                 ).fetchall()
                 for row in rows:
                     lid = row["id"]
                     if lid not in already_linked:
-                        _link_one_lead(contact_id, lid, 0.8, "name_match")
+                        _link_one_lead(contact_id, lid, 0.8, "name_match", tenant_id=tenant_id)
                         linked_ids.append(lid)
                         already_linked.add(lid)
         finally:
@@ -538,25 +649,50 @@ def link_contact_to_leads(contact_id: int, leads_df: Optional[Any] = None) -> Li
     return linked_ids
 
 
-def _link_one_lead(contact_id: int, lead_id: int, confidence: float, method: str) -> None:
+def _link_one_lead(
+    contact_id: int,
+    lead_id: int,
+    confidence: float,
+    method: str,
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> None:
     conn = get_connection()
     try:
         conn.execute(
-            "INSERT OR IGNORE INTO contact_lead_links (contact_id, lead_id, match_confidence, match_method) VALUES (?, ?, ?, ?)",
-            (contact_id, lead_id, confidence, method),
+            """INSERT OR IGNORE INTO contact_lead_links
+               (contact_id, lead_id, match_confidence, match_method, tenant_id)
+               VALUES (?, ?, ?, ?, ?)""",
+            (contact_id, lead_id, confidence, method, tenant_id),
         )
         conn.commit()
     finally:
         conn.close()
 
 
-def link_contact_to_lead_manual(contact_id: int, lead_id: int) -> bool:
-    """Manually link contact to one lead."""
+def link_contact_to_lead_manual(
+    contact_id: int,
+    lead_id: int,
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> bool:
+    """Manually link contact to one lead, scoped to tenant."""
+    # Verify both belong to this tenant before linking
     conn = get_connection()
     try:
+        c = conn.execute(
+            "SELECT 1 FROM contacts WHERE id = ? AND tenant_id = ?",
+            (contact_id, tenant_id),
+        ).fetchone()
+        l = conn.execute(
+            "SELECT 1 FROM leads WHERE id = ? AND tenant_id = ?",
+            (lead_id, tenant_id),
+        ).fetchone()
+        if not c or not l:
+            return False
         conn.execute(
-            "INSERT OR IGNORE INTO contact_lead_links (contact_id, lead_id, match_confidence, match_method) VALUES (?, ?, 1.0, 'manual')",
-            (contact_id, lead_id),
+            """INSERT OR IGNORE INTO contact_lead_links
+               (contact_id, lead_id, match_confidence, match_method, tenant_id)
+               VALUES (?, ?, 1.0, 'manual', ?)""",
+            (contact_id, lead_id, tenant_id),
         )
         conn.commit()
         return True
@@ -564,11 +700,25 @@ def link_contact_to_lead_manual(contact_id: int, lead_id: int) -> bool:
         conn.close()
 
 
-def unlink_lead(contact_id: int, lead_id: int) -> bool:
-    """Remove link between contact and lead."""
+def unlink_lead(
+    contact_id: int,
+    lead_id: int,
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> bool:
+    """Remove link between contact and lead, scoped to tenant."""
     conn = get_connection()
     try:
-        conn.execute("DELETE FROM contact_lead_links WHERE contact_id = ? AND lead_id = ?", (contact_id, lead_id))
+        # Only delete if the contact belongs to this tenant
+        owner = conn.execute(
+            "SELECT 1 FROM contacts WHERE id = ? AND tenant_id = ?",
+            (contact_id, tenant_id),
+        ).fetchone()
+        if not owner:
+            return False
+        conn.execute(
+            "DELETE FROM contact_lead_links WHERE contact_id = ? AND lead_id = ?",
+            (contact_id, lead_id),
+        )
         conn.commit()
         return True
     finally:
@@ -642,12 +792,14 @@ def search_contacts(
     contact_type: Optional[str] = None,
     agent_assigned: Optional[str] = None,
     limit: int = 500,
+    tenant_id: str = DEFAULT_TENANT_ID,
 ) -> List[Dict[str, Any]]:
-    """Search contacts by name/phone, optionally filter by type and agent."""
+    """Search contacts by name/phone, optionally filter by type and agent.
+    Always scoped to tenant."""
     conn = get_connection(readonly=True)
     try:
-        sql = "SELECT * FROM contacts WHERE 1=1"
-        params = []
+        sql = "SELECT * FROM contacts WHERE tenant_id = ?"
+        params: list = [tenant_id]
         if query and query.strip():
             q = f"%{query.strip()}%"
             sql += " AND (full_name LIKE ? OR phone LIKE ? OR email LIKE ?)"
@@ -666,22 +818,33 @@ def search_contacts(
         conn.close()
 
 
-def get_contact_count() -> int:
-    """Total number of contacts."""
+def get_contact_count(tenant_id: str = DEFAULT_TENANT_ID) -> int:
+    """Total number of contacts for `tenant_id`."""
     conn = get_connection(readonly=True)
     try:
-        return conn.execute("SELECT COUNT(*) FROM contacts").fetchone()[0]
+        return conn.execute(
+            "SELECT COUNT(*) FROM contacts WHERE tenant_id = ?",
+            (tenant_id,),
+        ).fetchone()[0]
     finally:
         conn.close()
 
 
-def update_last_contact_date(contact_id: int, when: Optional[datetime] = None) -> bool:
-    """Set last_contact_date for contact (e.g. after logging a call)."""
+def update_last_contact_date(
+    contact_id: int,
+    when: Optional[datetime] = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
+) -> bool:
+    """Set last_contact_date for contact (e.g. after logging a call), scoped
+    to tenant."""
     conn = get_connection()
     try:
         ts = (when or datetime.now()).strftime("%Y-%m-%d %H:%M:%S")
-        conn.execute("UPDATE contacts SET last_contact_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (ts, contact_id))
+        cur = conn.execute(
+            "UPDATE contacts SET last_contact_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?",
+            (ts, contact_id, tenant_id),
+        )
         conn.commit()
-        return True
+        return cur.rowcount > 0
     finally:
         conn.close()

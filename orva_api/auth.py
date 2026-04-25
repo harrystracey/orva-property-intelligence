@@ -12,6 +12,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from .config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRY_HOURS, USERS_FILE
+from .tenant_context import DEFAULT_TENANT_ID
 
 logger = logging.getLogger("orva_api.auth")
 
@@ -53,9 +54,17 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def create_token(username: str) -> str:
+    """
+    Mint a JWT for `username`. Includes a `tenant` claim drawn from the
+    user record (USERS[username]["tenant"]) or DEFAULT_TENANT_ID if the
+    user record predates multi-tenant. Existing single-tenant deployments
+    therefore continue minting tokens with tenant='orva' automatically.
+    """
+    user = USERS[username]
     payload = {
         "sub": username,
-        "name": USERS[username]["name"],
+        "name": user["name"],
+        "tenant": user.get("tenant") or DEFAULT_TENANT_ID,
         "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRY_HOURS),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
@@ -71,13 +80,22 @@ def authenticate_user(username: str, password: str) -> str | None:
 
 
 def _decode_token(token: str) -> dict:
-    """Decode a JWT and resolve the user. Raises HTTPException(401) on failure."""
+    """Decode a JWT and resolve the user. Raises HTTPException(401) on failure.
+
+    The returned dict surfaces `username`, `name`, and `tenant`. Older
+    tokens that lack the `tenant` claim are tolerated -- callers using
+    `tenant_context.current_tenant_id()` will fall back to the default.
+    """
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         username = payload.get("sub")
         if username not in USERS:
             raise HTTPException(status_code=401, detail="Invalid user")
-        return {"username": username, "name": payload.get("name")}
+        return {
+            "username": username,
+            "name": payload.get("name"),
+            "tenant": payload.get("tenant") or DEFAULT_TENANT_ID,
+        }
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:

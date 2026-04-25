@@ -13,6 +13,7 @@ from .. import _sys_paths  # noqa: F401 -- puts project root on sys.path
 import contact_manager as cm  # noqa: E402
 
 from ..auth import get_current_user
+from ..tenant_context import current_tenant_id
 from ..schemas.contacts import (
     ContactRecord, ContactDetail, ContactListResponse,
     CreateContactRequest, UpdateContactRequest,
@@ -123,14 +124,16 @@ def list_contacts(
     limit: int = Query(500, ge=1, le=2000),
     user: dict = Depends(get_current_user),
 ) -> ContactListResponse:
-    """Search contacts. Returns up to `limit` rows, plus the global total."""
+    """Search contacts. Scoped to the caller's tenant."""
+    tid = current_tenant_id(user)
     rows = cm.search_contacts(
         query=query,
         contact_type=contact_type,
         agent_assigned=agent_assigned,
         limit=limit,
+        tenant_id=tid,
     )
-    total = cm.get_contact_count()
+    total = cm.get_contact_count(tenant_id=tid)
     return ContactListResponse(
         contacts=[_row_to_contact(r) for r in rows],
         total=total,
@@ -142,7 +145,8 @@ def create_contact(
     req: CreateContactRequest,
     user: dict = Depends(get_current_user),
 ) -> ContactRecord:
-    """Create a new contact. Auto-links to leads by phone."""
+    """Create a new contact under the caller's tenant. Auto-links to leads."""
+    tid = current_tenant_id(user)
     contact_id, error = cm.create_contact(
         full_name=req.full_name,
         phone=req.phone,
@@ -152,11 +156,13 @@ def create_contact(
         budget_min=req.budget_min,
         budget_max=req.budget_max,
         agent_assigned=req.agent_assigned,
+        tenant_id=tid,
     )
     if error or not contact_id:
-        # Duplicate phone+name is the most common cause -- 409 Conflict.
         raise HTTPException(status_code=409, detail=error or "Failed to create contact")
-    contact = cm.get_contact(contact_id, include_properties=False, include_linked_leads=False)
+    contact = cm.get_contact(
+        contact_id, include_properties=False, include_linked_leads=False, tenant_id=tid,
+    )
     if not contact:
         raise HTTPException(status_code=500, detail="Created contact but could not load it back")
     return _row_to_contact(contact)
@@ -171,8 +177,11 @@ def get_contact(
     contact_id: int,
     user: dict = Depends(get_current_user),
 ) -> ContactDetail:
-    """Full contact view: row + properties + linked leads."""
-    contact = cm.get_contact(contact_id, include_properties=True, include_linked_leads=True)
+    """Full contact view: row + properties + linked leads. Tenant-scoped."""
+    tid = current_tenant_id(user)
+    contact = cm.get_contact(
+        contact_id, include_properties=True, include_linked_leads=True, tenant_id=tid,
+    )
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
     base = _row_to_contact(contact).model_dump()
@@ -189,8 +198,11 @@ def update_contact(
     req: UpdateContactRequest,
     user: dict = Depends(get_current_user),
 ) -> ContactRecord:
-    """Partial update -- only fields explicitly provided are changed."""
-    if not cm.get_contact(contact_id, include_properties=False, include_linked_leads=False):
+    """Partial update; only fields explicitly provided are changed."""
+    tid = current_tenant_id(user)
+    if not cm.get_contact(
+        contact_id, include_properties=False, include_linked_leads=False, tenant_id=tid,
+    ):
         raise HTTPException(status_code=404, detail="Contact not found")
 
     cm.update_contact(
@@ -203,8 +215,11 @@ def update_contact(
         budget_min=req.budget_min,
         budget_max=req.budget_max,
         agent_assigned=req.agent_assigned,
+        tenant_id=tid,
     )
-    updated = cm.get_contact(contact_id, include_properties=False, include_linked_leads=False)
+    updated = cm.get_contact(
+        contact_id, include_properties=False, include_linked_leads=False, tenant_id=tid,
+    )
     return _row_to_contact(updated)
 
 
@@ -214,9 +229,12 @@ def delete_contact(
     user: dict = Depends(get_current_user),
 ):
     """Hard delete: removes the contact + properties + lead-links."""
-    if not cm.get_contact(contact_id, include_properties=False, include_linked_leads=False):
+    tid = current_tenant_id(user)
+    if not cm.get_contact(
+        contact_id, include_properties=False, include_linked_leads=False, tenant_id=tid,
+    ):
         raise HTTPException(status_code=404, detail="Contact not found")
-    cm.delete_contact(contact_id)
+    cm.delete_contact(contact_id, tenant_id=tid)
     return None
 
 
@@ -231,7 +249,10 @@ def add_property(
     user: dict = Depends(get_current_user),
 ) -> ContactProperty:
     """Add a property to a contact. Auto-merges scraped listings if matched."""
-    if not cm.get_contact(contact_id, include_properties=False, include_linked_leads=False):
+    tid = current_tenant_id(user)
+    if not cm.get_contact(
+        contact_id, include_properties=False, include_linked_leads=False, tenant_id=tid,
+    ):
         raise HTTPException(status_code=404, detail="Contact not found")
 
     prop_id = cm.add_property_to_contact(
@@ -245,13 +266,12 @@ def add_property(
         view_type=req.view_type,
         notes=req.notes,
         lead_id=req.lead_id,
+        tenant_id=tid,
     )
     if not prop_id:
         raise HTTPException(status_code=500, detail="Failed to add property")
 
-    # Re-fetch so we return the merged row (intent/listing url may have been
-    # auto-populated by merge_scraped_listing inside add_property_to_contact).
-    rows = cm.get_contact_properties(contact_id)
+    rows = cm.get_contact_properties(contact_id, tenant_id=tid)
     new_row = next((r for r in rows if r["id"] == prop_id), None)
     if not new_row:
         raise HTTPException(status_code=500, detail="Created property but could not reload it")
@@ -266,7 +286,8 @@ def update_property(
     user: dict = Depends(get_current_user),
 ) -> ContactProperty:
     """Partial update of a contact property."""
-    rows = cm.get_contact_properties(contact_id)
+    tid = current_tenant_id(user)
+    rows = cm.get_contact_properties(contact_id, tenant_id=tid)
     target = next((r for r in rows if r["id"] == property_id), None)
     if not target:
         raise HTTPException(status_code=404, detail="Property not found on this contact")
@@ -281,8 +302,9 @@ def update_property(
         intent=_validate_intent(req.intent),
         view_type=req.view_type,
         notes=req.notes,
+        tenant_id=tid,
     )
-    rows = cm.get_contact_properties(contact_id)
+    rows = cm.get_contact_properties(contact_id, tenant_id=tid)
     updated = next((r for r in rows if r["id"] == property_id), None)
     return _row_to_property(updated)
 
@@ -293,10 +315,11 @@ def delete_property(
     property_id: int,
     user: dict = Depends(get_current_user),
 ):
-    rows = cm.get_contact_properties(contact_id)
+    tid = current_tenant_id(user)
+    rows = cm.get_contact_properties(contact_id, tenant_id=tid)
     if not any(r["id"] == property_id for r in rows):
         raise HTTPException(status_code=404, detail="Property not found on this contact")
-    cm.remove_property_from_contact(property_id)
+    cm.remove_property_from_contact(property_id, tenant_id=tid)
     return None
 
 
@@ -313,10 +336,12 @@ def resolve_unit_specs(
 ) -> ResolveUnitSpecsResponse:
     """
     Look up bedrooms/bathrooms/view from the unit registry + building schema
-    so the UI can pre-fill 'Add property' forms. contact_id is in the path
-    only for ergonomics -- the resolution itself doesn't depend on it.
+    so the UI can pre-fill 'Add property' forms.
     """
-    if not cm.get_contact(contact_id, include_properties=False, include_linked_leads=False):
+    tid = current_tenant_id(user)
+    if not cm.get_contact(
+        contact_id, include_properties=False, include_linked_leads=False, tenant_id=tid,
+    ):
         raise HTTPException(status_code=404, detail="Contact not found")
     specs = cm.resolve_unit_specs(building_name, unit_number)
     return ResolveUnitSpecsResponse(**specs)
