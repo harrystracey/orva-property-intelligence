@@ -568,3 +568,204 @@ export function sendChatMessage(
 
   return controller;
 }
+
+// --- Contacts ---
+
+export const CONTACT_TYPES = [
+  "Owner",
+  "Buyer",
+  "Investor",
+  "Broker",
+  "Tenant",
+  "Other",
+] as const;
+export type ContactType = (typeof CONTACT_TYPES)[number];
+
+export const INTENT_VALUES = [
+  "selling",
+  "renting",
+  "buying",
+  "renting_looking",
+] as const;
+export type Intent = (typeof INTENT_VALUES)[number];
+
+export interface ContactRecord {
+  id: number;
+  full_name: string | null;
+  phone: string | null;
+  email: string | null;
+  contact_type: string | null;
+  source: string | null;
+  budget_min: number | null;
+  budget_max: number | null;
+  agent_assigned: string | null;
+  last_contact_date: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface ContactProperty {
+  id: number;
+  contact_id: number;
+  building_name: string | null;
+  unit_number: string | null;
+  bedrooms: string | null;
+  bathrooms: string | null;
+  price_aed: number | null;
+  intent: string | null;
+  view_type: string | null;
+  notes: string | null;
+  lead_id: number | null;
+  is_scraped_listing: boolean;
+  scraped_listing_url: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface LinkedLead {
+  link_id: number;
+  lead_id: number;
+  match_confidence: number | null;
+  match_method: string | null;
+  building_name: string | null;
+  unit_number: string | null;
+  bedrooms: string | null;
+  phone: string | null;
+}
+
+export interface ContactDetail extends ContactRecord {
+  properties: ContactProperty[];
+  linked_leads: LinkedLead[];
+}
+
+export interface ContactListResponse {
+  contacts: ContactRecord[];
+  total: number;
+}
+
+export interface CreateContactPayload {
+  full_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  contact_type?: string | null;
+  source?: string | null;
+  budget_min?: number | null;
+  budget_max?: number | null;
+  agent_assigned?: string | null;
+}
+
+export type UpdateContactPayload = CreateContactPayload;
+
+export interface ContactSearchParams {
+  query?: string;
+  contact_type?: string;
+  agent_assigned?: string;
+  limit?: number;
+}
+
+export interface AddPropertyPayload {
+  building_name?: string | null;
+  unit_number?: string | null;
+  bedrooms?: string | null;
+  bathrooms?: string | null;
+  price_aed?: number | null;
+  intent?: string | null;
+  view_type?: string | null;
+  notes?: string | null;
+  lead_id?: number | null;
+}
+
+export type UpdatePropertyPayload = Omit<AddPropertyPayload, "lead_id">;
+
+export interface ResolveUnitSpecsResponse {
+  bedrooms: string | null;
+  bathrooms: string | null;
+  view_type: string | null;
+}
+
+function buildQuery(params: Record<string, string | number | undefined>): string {
+  const entries = Object.entries(params).filter(
+    ([, v]) => v !== undefined && v !== "",
+  );
+  if (entries.length === 0) return "";
+  const sp = new URLSearchParams();
+  for (const [k, v] of entries) sp.set(k, String(v));
+  return `?${sp.toString()}`;
+}
+
+export async function listContacts(
+  params: ContactSearchParams = {},
+): Promise<ContactListResponse> {
+  return request<ContactListResponse>(`/api/contacts${buildQuery(params)}`);
+}
+
+export async function getContact(contactId: number): Promise<ContactDetail> {
+  return request<ContactDetail>(`/api/contacts/${contactId}`);
+}
+
+export async function createContact(
+  payload: CreateContactPayload,
+): Promise<ContactRecord> {
+  return request<ContactRecord>(`/api/contacts`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateContact(
+  contactId: number,
+  payload: UpdateContactPayload,
+): Promise<ContactRecord> {
+  return request<ContactRecord>(`/api/contacts/${contactId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteContact(contactId: number): Promise<void> {
+  await request<void>(`/api/contacts/${contactId}`, { method: "DELETE" });
+}
+
+export async function addContactProperty(
+  contactId: number,
+  payload: AddPropertyPayload,
+): Promise<ContactProperty> {
+  return request<ContactProperty>(`/api/contacts/${contactId}/properties`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateContactProperty(
+  contactId: number,
+  propertyId: number,
+  payload: UpdatePropertyPayload,
+): Promise<ContactProperty> {
+  return request<ContactProperty>(
+    `/api/contacts/${contactId}/properties/${propertyId}`,
+    { method: "PUT", body: JSON.stringify(payload) },
+  );
+}
+
+export async function deleteContactProperty(
+  contactId: number,
+  propertyId: number,
+): Promise<void> {
+  await request<void>(`/api/contacts/${contactId}/properties/${propertyId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function resolveUnitSpecs(
+  contactId: number,
+  buildingName: string,
+  unitNumber: string,
+): Promise<ResolveUnitSpecsResponse> {
+  const qs = buildQuery({
+    building_name: buildingName,
+    unit_number: unitNumber,
+  });
+  return request<ResolveUnitSpecsResponse>(
+    `/api/contacts/${contactId}/resolve-unit-specs${qs}`,
+  );
+}
