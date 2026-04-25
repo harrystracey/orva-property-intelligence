@@ -256,51 +256,10 @@ def process_reidin_export(df: pd.DataFrame) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Raw extractor output ingestion (from reidin_extractor.py)
+# (process_reidin_raw was removed alongside reidin_extractor.py -- the live
+# Reidin scraper has been deleted. process_reidin_export() above still works
+# for any Reidin CSV export obtained manually.)
 # ---------------------------------------------------------------------------
-
-# Column aliases matching reidin_extractor.py output columns
-_RAW_COL_ALIASES = {
-    "building_name":      ["property", "Property", "Building", "Community"],
-    "unit_number":        ["unit", "Unit", "unit_no"],
-    "bedrooms":           ["bedrooms", "Bedrooms", "beds"],
-    "size_sqft":          ["size_sqf", "size_sqft", "Size (Sqf)", "Size"],
-    "contract_date":      ["date", "Date"],
-    "transaction_amount": ["amount_aed", "Amount (AED)", "Amount"],
-    "floor_level":        ["floor", "Floor"],
-    "view":               ["view", "View", "Primary/Secondary View"],
-}
-
-
-def process_reidin_raw(raw_path: str = "data/reidin_raw.csv") -> dict:
-    """
-    Read data/reidin_raw.csv (output of reidin_extractor.py) and run it
-    through the standard normalization pipeline, including building name
-    standardization via building_intelligence.standardize_building_name.
-
-    Returns the same summary dict as process_reidin_export().
-    """
-    rpath = Path(raw_path)
-    if not rpath.exists():
-        return {
-            "rows_in": 0, "rows_out": 0, "buildings": 0,
-            "output_path": None,
-            "warnings": [f"ERROR: Raw extractor output not found at {raw_path}"],
-        }
-
-    df = pd.read_csv(rpath, low_memory=False)
-
-    # Remap extractor column names to the aliases process_reidin_export() understands
-    rename: dict[str, str] = {}
-    for field, aliases in _RAW_COL_ALIASES.items():
-        for alias in aliases:
-            if alias in df.columns:
-                rename[alias] = aliases[0]  # normalise to first alias (canonical)
-                break
-    if rename:
-        df = df.rename(columns=rename)
-
-    return process_reidin_export(df)
 
 
 # ---------------------------------------------------------------------------

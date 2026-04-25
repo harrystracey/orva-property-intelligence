@@ -1609,25 +1609,12 @@ def render_lead_search_page():
             if st.button("PF Scraper", key="tools_pf_btn", help="PropertyFinder + permit scraper", use_container_width=True):
                 st.session_state.current_page = 'pf_scraper'
                 st.rerun()
-            if st.button("Reidin Sync", key="tools_reidin_btn", help="Scrape live from Reidin → Priority 1.5 data", use_container_width=True):
+            if st.button("Reidin Upload", key="tools_reidin_btn", help="Upload a Reidin CSV export (live scrape removed)", use_container_width=True):
                 st.session_state.current_page = 'reidin_sync'
                 st.rerun()
             if st.button("Matcher", key="tools_matcher_btn", help="Match listings to owners", use_container_width=True):
                 st.session_state.current_page = 'listing_matcher'
                 st.rerun()
-            st.divider()
-            st.caption("Reidin — Chrome port 9222")
-            _bat_path = Path(r"C:\Users\thema\OneDrive\Desktop\ORVA\Run_Reidin_Scraper.bat")
-            if st.button("Launch Reidin Chrome", key="tools_reidin_chrome_btn", help="Open Chrome on port 9222 ready for Reidin scraping", use_container_width=True):
-                if _bat_path.exists():
-                    subprocess.Popen(
-                        ["cmd", "/c", "start", "", str(_bat_path)],
-                        shell=False,
-                        cwd=str(_bat_path.parent),
-                    )
-                    st.success("Launching… log in to Reidin, then use Reidin Sync.")
-                else:
-                    st.error(f"I could not find the .bat file at: {_bat_path}")
             st.divider()
             st.caption("Bayut Refresh — Chrome port 9222")
             refresh_type = st.radio("Type", ["Both", "Sale", "Rent"], horizontal=True, key="tools_refresh_type")
@@ -3709,7 +3696,7 @@ def render_whatsapp_page():
                 _n_buyer = len(_ps_df[_ps_df.get('lead_type', _pd.Series()).str.strip().str.lower() == 'buyer']) if 'lead_type' in _ps_df.columns else 0
                 st.info(f"🎯 **{_n_total} leads scraped** — {_n_tenant} tenants, {_n_buyer} buyers. Apply your filters below.")
             else:
-                st.warning("No PropSpace leads found. Run: `python propspace_scraper/run_propspace_scrape.py`")
+                st.warning("No PropSpace leads found in scraped_data/propspace_leads.csv (live scraper has been removed; this campaign type only uses existing historical data).")
             ps_lead_type = st.selectbox("Lead Type", options=['Both', 'Tenant', 'Buyer'], key="ps_lead_type")
             ps_not_yet = st.checkbox("Not yet contacted only (unreliable)", value=False, key="ps_not_yet",
                                      help="Only leads with sub_status = Not yet contacted")
@@ -6061,83 +6048,32 @@ def render_reidin_sync_page():
 
     st.divider()
 
-    tab_sync, tab_csv = st.tabs(["Live Sync", "CSV Upload"])
+    # ── CSV Upload (live scrape no longer available) ─────────────────────────
+    st.info(
+        "Live Reidin sync has been removed -- this account no longer has Reidin "
+        "access. Existing Reidin data on disk (data/reidin_master.parquet) is "
+        "still used by the bedroom cascade. Upload a CSV below if you obtain "
+        "a fresh Reidin export from another source."
+    )
+    st.divider()
+    st.subheader("CSV Upload")
+    st.caption("Expected columns: Project, Unit No, Bedrooms, Size, Contract Date, Amount")
 
-    # ── Live Sync tab ────────────────────────────────────────────────────────
-    with tab_sync:
-        st.subheader("Prerequisites")
-        st.markdown(
-            "Before starting, make sure:\n"
-            "- Chrome is running with `--remote-debugging-port=9222`\n"
-            "- I am logged into **reidin.com** and on the **Sales Transactions** page\n"
-            "- Filters are applied (Palm Jumeirah, desired date range)"
-        )
-        st.divider()
+    uploaded = st.file_uploader("Select Reidin CSV export", type=["csv"], key="reidin_uploader")
 
-        progress_path = Path("data/reidin_progress.json")
+    if uploaded is not None:
+        try:
+            import io
+            df_raw = pd.read_csv(io.BytesIO(uploaded.read()), encoding="utf-8", low_memory=False, on_bad_lines="skip")
+            st.info(f"I loaded {len(df_raw):,} rows from **{uploaded.name}**. Columns: {', '.join(df_raw.columns[:8].tolist())}{'…' if len(df_raw.columns) > 8 else ''}")
 
-        # Show previous run summary if available
-        if progress_path.exists():
-            try:
-                _prev = json.loads(progress_path.read_text(encoding="utf-8"))
-                if _prev.get("status") == "done":
-                    st.info(
-                        f"Last run: **{_prev.get('rows', 0):,} rows** scraped across "
-                        f"**{_prev.get('page', 0)} pages** · {_prev.get('finished_at', '')}"
-                    )
-            except Exception:
-                pass
-
-        if st.button("Start Reidin Sync", type="primary", key="reidin_sync_btn", use_container_width=True):
-            # Clear stale progress file
-            if progress_path.exists():
-                progress_path.unlink()
-
-            cmd = [sys.executable, str(Path(__file__).resolve().parent / "reidin_extractor.py")]
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-
-            counter = st.empty()
-            log_box = st.empty()
-            log_lines: list[str] = []
-
-            # Poll progress while process runs
-            while proc.poll() is None:
-                # Read a line of stdout if available
-                try:
-                    line = proc.stdout.readline()
-                    if line:
-                        log_lines.append(line.rstrip())
-                        log_box.code("\n".join(log_lines[-8:]))
-                except Exception:
-                    pass
-                # Check progress JSON
-                if progress_path.exists():
+            if st.button("Process & Ingest", type="primary", key="reidin_process_btn"):
+                with st.spinner("Normalising and saving..."):
                     try:
-                        _prog = json.loads(progress_path.read_text(encoding="utf-8"))
-                        if _prog.get("status") == "running":
-                            counter.info(
-                                f"Extracting… page **{_prog['page']}** | **{_prog['rows']:,}** rows collected"
-                            )
-                        elif _prog.get("status") == "error":
-                            counter.error(_prog.get("error", "Unknown error"))
-                            break
-                    except Exception:
-                        pass
-
-            proc.wait()
-            counter.empty()
-            log_box.empty()
-
-            if proc.returncode != 0:
-                st.error("I encountered an error during extraction. Check that Chrome is running on port 9222 and I am on the Reidin Sales Transactions page.")
-            else:
-                # Run processor
-                with st.spinner("Normalising and saving to reidin_master.parquet…"):
-                    try:
-                        from reidin_processor import process_reidin_raw
-                        result = process_reidin_raw()
-                    except Exception as exc:
-                        st.error(f"I could not process the extracted data: {exc}")
+                        from reidin_processor import process_reidin_export
+                        result = process_reidin_export(df_raw)
+                    except Exception as e:
+                        st.error(f"I encountered an error during processing: {e}")
                         result = None
 
                 if result:
@@ -6148,53 +6084,15 @@ def render_reidin_sync_page():
                             st.warning(w)
                     if result.get("output_path"):
                         st.success(
-                            f"I synced **{result['rows_out']:,} units** across "
+                            f"I ingested **{result['rows_out']:,} units** across "
                             f"**{result['buildings']} buildings**. "
-                            f"Priority 1.5 is active."
+                            f"Reidin DLD is now active at Priority 1.5."
                         )
-                        if st.button("Reload App Data", key="reidin_reload_after_sync"):
+                        if st.button("Reload App Data", key="reidin_reload_btn"):
                             st.cache_data.clear()
                             st.rerun()
-
-    # ── CSV Upload tab (fallback) ────────────────────────────────────────────
-    with tab_csv:
-        st.subheader("CSV Upload")
-        st.caption("Fallback for when Reidin re-enables CSV exports. Expected columns: Project, Unit No, Bedrooms, Size, Contract Date, Amount")
-
-        uploaded = st.file_uploader("Select Reidin CSV export", type=["csv"], key="reidin_uploader")
-
-        if uploaded is not None:
-            try:
-                import io
-                df_raw = pd.read_csv(io.BytesIO(uploaded.read()), encoding="utf-8", low_memory=False, on_bad_lines="skip")
-                st.info(f"I loaded {len(df_raw):,} rows from **{uploaded.name}**. Columns: {', '.join(df_raw.columns[:8].tolist())}{'…' if len(df_raw.columns) > 8 else ''}")
-
-                if st.button("Process & Ingest", type="primary", key="reidin_process_btn"):
-                    with st.spinner("Normalising and saving..."):
-                        try:
-                            from reidin_processor import process_reidin_export
-                            result = process_reidin_export(df_raw)
-                        except Exception as e:
-                            st.error(f"I encountered an error during processing: {e}")
-                            result = None
-
-                    if result:
-                        for w in result.get("warnings", []):
-                            if w.startswith("ERROR"):
-                                st.error(w)
-                            else:
-                                st.warning(w)
-                        if result.get("output_path"):
-                            st.success(
-                                f"I ingested **{result['rows_out']:,} units** across "
-                                f"**{result['buildings']} buildings**. "
-                                f"Reidin DLD is now active at Priority 1.5."
-                            )
-                            if st.button("Reload App Data", key="reidin_reload_btn"):
-                                st.cache_data.clear()
-                                st.rerun()
-            except Exception as e:
-                st.error(f"I could not read that file: {e}")
+        except Exception as e:
+            st.error(f"I could not read that file: {e}")
 
     st.divider()
     if st.button("← Back", key="reidin_back_btn", use_container_width=True):
@@ -6278,7 +6176,7 @@ def render_health_check_page():
                 pass
         else:
             st.warning("⚠ Reidin data not yet ingested")
-            st.caption("Go to Tools → Reidin Sync to scrape live from Reidin")
+            st.caption("Live Reidin scraper has been removed. Upload a CSV export via Tools → Reidin Upload if you obtain one.")
     with col_r2:
         pm_legacy = Path("scraped_data/unit_numbers_palm_jumeirah.csv")
         if pm_legacy.exists():
