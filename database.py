@@ -428,6 +428,49 @@ INDEXES_SQL = [
 # Initialization
 # ---------------------------------------------------------------------------
 
+# Tables that should carry a tenant_id column for multi-tenant SaaS use.
+# Default value is 'orva' so single-tenant deployments (the current state)
+# keep working without any code changes.
+_TENANT_TABLES = (
+    "leads", "transactions", "cross_references",
+    "scraped_units", "client_notes", "client_reminders",
+    "contacts", "contact_properties", "contact_lead_links",
+    "rentals", "bayut_listings", "pf_listings",
+    "call_log", "whatsapp_messages", "unit_registry",
+)
+
+
+def ensure_tenant_columns(conn) -> int:
+    """
+    Add a `tenant_id` column to every multi-tenant table that doesn't
+    already have one, defaulting to 'orva'.
+
+    SQLite's ALTER TABLE ADD COLUMN doesn't support IF NOT EXISTS, so
+    we check pragma table_info first. Returns the number of columns
+    actually added (zero on a re-run).
+    """
+    added = 0
+    for table in _TENANT_TABLES:
+        try:
+            cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        except Exception:
+            continue
+        if not cols:
+            # Table doesn't exist (shouldn't happen after init_database, but
+            # we don't want this to be the failure mode).
+            continue
+        if "tenant_id" in cols:
+            continue
+        conn.execute(
+            f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'orva'"
+        )
+        conn.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{table}_tenant ON {table}(tenant_id)"
+        )
+        added += 1
+    return added
+
+
 def init_database() -> None:
     """
     Create all tables and indexes if they don't already exist.
@@ -441,6 +484,13 @@ def init_database() -> None:
         # Create indexes
         for idx_sql in INDEXES_SQL:
             conn.execute(idx_sql)
+
+        # Phase 6: ensure every multi-tenant table has a tenant_id column.
+        # This is run AFTER the CREATE TABLE pass so it can ALTER any
+        # tables that pre-date the multi-tenant migration.
+        added = ensure_tenant_columns(conn)
+        if added:
+            print(f"[database] Added tenant_id to {added} table(s)")
 
         conn.commit()
         print(f"[database] Initialized database at {DB_PATH}")

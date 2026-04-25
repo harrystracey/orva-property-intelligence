@@ -25,7 +25,7 @@ logger = logging.getLogger("orva_api")
 
 from .config import CORS_ORIGINS
 from .deps import data_store
-from .routers import auth, leads, clients, whatsapp, chat, contacts, listings
+from .routers import auth, leads, clients, whatsapp, chat, contacts, listings, admin
 
 
 @asynccontextmanager
@@ -60,6 +60,7 @@ app.include_router(leads.router)
 app.include_router(clients.router)
 app.include_router(contacts.router)
 app.include_router(listings.router)
+app.include_router(admin.router)
 app.include_router(whatsapp.router)
 app.include_router(chat.router)
 
