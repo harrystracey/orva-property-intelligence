@@ -138,7 +138,7 @@ export default function ClientProfilePage() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
         <p className="text-danger">{error || "Profile not found"}</p>
-        <button onClick={() => router.push("/")} className="text-sm text-accent hover:underline">
+        <button onClick={() => router.push("/leads")} className="text-sm text-accent hover:underline">
           Back to leads
         </button>
       </div>
@@ -212,7 +212,7 @@ export default function ClientProfilePage() {
       {/* Header */}
       <div className="flex items-center gap-3">
         <button
-          onClick={() => router.push("/")}
+          onClick={() => router.push("/leads")}
           className="rounded-lg p-2 text-muted hover:bg-card-hover hover:text-foreground"
         >
           <ArrowLeft size={18} />

@@ -28,7 +28,10 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/", label: "Leads", icon: <Search size={18} />, mobileNav: true },
+  // /leads instead of / -- nginx hijacks `=  /` to serve the static marketing
+  // landing site. Authenticated users need a separate path that falls
+  // through to the Next.js app.
+  { href: "/leads", label: "Leads", icon: <Search size={18} />, mobileNav: true },
   {
     href: "/follow-ups",
     label: "Follow-Ups",
@@ -89,7 +92,7 @@ export function Navbar() {
   if (!authenticated) return null;
 
   const isActive = (href: string) => {
-    if (href === "/") return pathname === "/";
+    if (href === "/leads") return pathname === "/leads";
     return pathname.startsWith(href);
   };
 
@@ -99,7 +102,7 @@ export function Navbar() {
     <>
       {/* Desktop navbar */}
       <nav className="hidden md:flex items-center gap-1 border-b border-border bg-card px-4 py-2">
-        <Link href="/" className="mr-4">
+        <Link href="/leads" className="mr-4">
           <OrvaLogo size="sm" />
         </Link>
 
@@ -167,7 +170,7 @@ export function Navbar() {
 
       {/* Mobile top bar */}
       <nav className="flex md:hidden items-center justify-between border-b border-border bg-card px-4 py-2">
-        <Link href="/">
+        <Link href="/leads">
           <OrvaLogo size="sm" />
         </Link>
         <button

@@ -49,8 +49,11 @@ def get_connection(readonly: bool = False) -> sqlite3.Connection:
         conn = sqlite3.connect(uri, uri=True, check_same_thread=False)
     else:
         conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+        # WAL mode is a write -- only set it on writable connections.
+        # Readonly handles inherit whatever journal mode the file already
+        # has (usually WAL, set by an earlier writer).
+        conn.execute("PRAGMA journal_mode=WAL")
 
-    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA busy_timeout=5000")
     conn.row_factory = sqlite3.Row

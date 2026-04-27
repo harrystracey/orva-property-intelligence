@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { LandingPage } from "@/components/landing-page";
 import { FilterPanel } from "@/components/filter-panel";
 import { LeadTable } from "@/components/lead-table";
 import { searchLeads, lookupClientId, LeadFilters, LeadSearchResponse, LeadRecord } from "@/lib/api";
@@ -81,17 +80,11 @@ export default function LeadSearchPage() {
     }
   };
 
-  // In production, nginx serves the static marketing site at "/" -- this
-  // Next.js home page is only reached if nginx is bypassed (e.g. dev /
-  // direct-port access). For unauthenticated users we still show the
-  // login landing; for authenticated users we send them to /leads where
-  // the live nav lives.
+  // /leads is the authenticated lead-search page. Unauthenticated users
+  // get sent to "/" which nginx serves as the marketing landing.
   if (authLoading) return null;
   if (!authenticated) {
-    return <LandingPage />;
-  }
-  if (typeof window !== "undefined" && window.location.pathname === "/") {
-    router.replace("/leads");
+    if (typeof window !== "undefined") window.location.href = "/";
     return null;
   }
 
