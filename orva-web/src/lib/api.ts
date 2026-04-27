@@ -683,9 +683,12 @@ export interface ResolveUnitSpecsResponse {
   view_type: string | null;
 }
 
-function buildQuery(params: Record<string, string | number | undefined>): string {
+// Accepts any plain object -- TypeScript interfaces (e.g. ContactSearchParams,
+// BayutFilters) don't satisfy Record<string, ...> because of structural typing
+// rules, so we accept `unknown` values and stringify defensively.
+function buildQuery(params: Record<string, unknown>): string {
   const entries = Object.entries(params).filter(
-    ([, v]) => v !== undefined && v !== "",
+    ([, v]) => v !== undefined && v !== null && v !== "",
   );
   if (entries.length === 0) return "";
   const sp = new URLSearchParams();
@@ -696,7 +699,9 @@ function buildQuery(params: Record<string, string | number | undefined>): string
 export async function listContacts(
   params: ContactSearchParams = {},
 ): Promise<ContactListResponse> {
-  return request<ContactListResponse>(`/api/contacts${buildQuery(params)}`);
+  return request<ContactListResponse>(
+    `/api/contacts${buildQuery({ ...params })}`,
+  );
 }
 
 export async function getContact(contactId: number): Promise<ContactDetail> {
@@ -893,7 +898,7 @@ export async function getBayutListings(
   filters: BayutFilters = {},
 ): Promise<BayutListingsResponse> {
   return request<BayutListingsResponse>(
-    `/api/bayut/listings${buildQuery(filters)}`,
+    `/api/bayut/listings${buildQuery({ ...filters })}`,
   );
 }
 
