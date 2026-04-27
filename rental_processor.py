@@ -546,78 +546,94 @@ def get_rental_intel_for_ai(rental_df: pd.DataFrame,
 # CROSS-REFERENCE WITH OWNER CONTACTS
 # =============================================================================
 
-def cross_reference_rentals_with_owners(rental_df: pd.DataFrame, 
+def cross_reference_rentals_with_owners(rental_df: pd.DataFrame,
                                         leads_df: pd.DataFrame,
                                         days_ahead: int = 90) -> pd.DataFrame:
     """
     Cross-reference expiring leases with owner contacts from the lead database.
-    
+
+    Vectorised join: builds normalised (building, unit) keys on both sides
+    once and does a single pandas merge. Previously this iterated rentals x
+    leads (4.5K x 78K = ~360M Python ops) and timed out behind nginx.
+
     Returns:
         DataFrame of expiring leases with owner contact info where available.
     """
     today = datetime.now()
     cutoff = today + timedelta(days=days_ahead)
-    
+
     expiring = rental_df[
-        (rental_df['contract_end'] >= today) & 
+        (rental_df['contract_end'] >= today) &
         (rental_df['contract_end'] <= cutoff)
     ].copy()
-    
+
     if expiring.empty:
         return pd.DataFrame()
-    
+
+    # Normalised match keys
+    expiring['_bldg_key'] = (
+        expiring['building_name'].fillna('').astype(str).str.lower().str.strip()
+    )
+    expiring['_unit_key'] = (
+        expiring['unit_number'].fillna('').astype(str).str.lower().str.strip()
+    )
+
     has_leads = (
         not leads_df.empty
         and 'building_name' in leads_df.columns
         and 'unit_number' in leads_df.columns
     )
-    
-    # Match with leads
-    result_rows = []
-    
-    for idx, rental in expiring.iterrows():
-        unit = str(rental['unit_number']).lower().strip()
-        bldg = rental['building_name'].lower().strip()
-        
-        # Find owner in leads
-        if has_leads:
-            owner_match = leads_df[
-                (leads_df['building_name'].fillna('').str.lower().str.contains(bldg, regex=False, na=False)) &
-                (leads_df['unit_number'].fillna('').str.lower() == unit)
-            ]
-        else:
-            owner_match = pd.DataFrame()
-        
-        row_data = {
-            'building_name': rental['building_name'],
-            'unit_number': rental['unit_number'],
-            'contract_end': rental['contract_end'],
-            'days_remaining': (rental['contract_end'] - today).days if pd.notna(rental['contract_end']) else None,
-            'annual_rent': rental['annualized_rent'],
-            'bedrooms': rental.get('bedrooms', ''),
-            'size_sqft': rental['size_sqft'],
-            'furnished': rental.get('furnished', ''),
-            'has_owner_contact': not owner_match.empty,
-        }
-        
-        if not owner_match.empty:
-            owner = owner_match.iloc[0]
-            row_data['owner_name'] = owner.get('owner_name')
-            row_data['owner_phone'] = owner.get('phone')
-            row_data['owner_email'] = owner.get('email')
-            row_data['owner_nationality'] = owner.get('nationality')
-        else:
-            row_data['owner_name'] = None
-            row_data['owner_phone'] = None
-            row_data['owner_email'] = None
-            row_data['owner_nationality'] = None
-        
-        result_rows.append(row_data)
-    
-    result_df = pd.DataFrame(result_rows)
-    result_df = result_df.sort_values('contract_end')
-    
-    return result_df
+
+    if has_leads:
+        leads_view = leads_df.copy()
+        leads_view['_bldg_key'] = (
+            leads_view['building_name'].fillna('').astype(str).str.lower().str.strip()
+        )
+        leads_view['_unit_key'] = (
+            leads_view['unit_number'].fillna('').astype(str).str.lower().str.strip()
+        )
+        # Keep only the columns we care about + the keys, and dedupe so
+        # one rental matches at most one lead.
+        keep_cols = [c for c in (
+            'owner_name', 'phone', 'email', 'nationality',
+            '_bldg_key', '_unit_key',
+        ) if c in leads_view.columns]
+        leads_view = (
+            leads_view[keep_cols]
+            .drop_duplicates(subset=['_bldg_key', '_unit_key'], keep='first')
+        )
+
+        merged = expiring.merge(
+            leads_view, on=['_bldg_key', '_unit_key'], how='left',
+        )
+    else:
+        merged = expiring.copy()
+        for col in ('owner_name', 'phone', 'email', 'nationality'):
+            merged[col] = None
+
+    merged['days_remaining'] = (
+        (merged['contract_end'] - today)
+        .dt.days
+        .where(merged['contract_end'].notna())
+    )
+
+    out = pd.DataFrame({
+        'building_name': merged['building_name'],
+        'unit_number': merged['unit_number'],
+        'contract_end': merged['contract_end'],
+        'days_remaining': merged['days_remaining'],
+        'annual_rent': merged.get('annualized_rent'),
+        'bedrooms': merged.get('bedrooms', pd.Series([''] * len(merged))),
+        'size_sqft': merged.get('size_sqft'),
+        'furnished': merged.get('furnished', pd.Series([''] * len(merged))),
+        'has_owner_contact': merged['phone'].notna() if 'phone' in merged.columns else False,
+        'owner_name': merged.get('owner_name'),
+        'owner_phone': merged.get('phone'),
+        'owner_email': merged.get('email'),
+        'owner_nationality': merged.get('nationality'),
+    })
+
+    return out.sort_values('contract_end').reset_index(drop=True)
 
 
 # =============================================================================

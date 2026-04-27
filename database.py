@@ -44,14 +44,16 @@ def get_connection(readonly: bool = False) -> sqlite3.Connection:
     Parameters:
         readonly: If True, opens the database in read-only mode (uri).
     """
+    # We deliberately do NOT use the `?mode=ro` URI here even when readonly
+    # is requested. SQLite in WAL mode (which we use) needs to update the
+    # .db-shm shared-memory file on every read, and ?mode=ro forbids that
+    # update -- so plain SELECTs raise "attempt to write a readonly database".
+    # Instead we open writable and use PRAGMA query_only=1 to refuse INSERT/
+    # UPDATE/DELETE at the SQL level, which is compatible with WAL.
+    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
     if readonly:
-        uri = f"file:{DB_PATH}?mode=ro"
-        conn = sqlite3.connect(uri, uri=True, check_same_thread=False)
+        conn.execute("PRAGMA query_only = 1")
     else:
-        conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-        # WAL mode is a write -- only set it on writable connections.
-        # Readonly handles inherit whatever journal mode the file already
-        # has (usually WAL, set by an earlier writer).
         conn.execute("PRAGMA journal_mode=WAL")
 
     conn.execute("PRAGMA foreign_keys=ON")
