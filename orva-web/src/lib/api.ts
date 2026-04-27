@@ -945,3 +945,70 @@ export async function findClientMatches(
     body: JSON.stringify(payload),
   });
 }
+
+// --- Admin: health + PF scraper ---
+
+export interface FileInfo {
+  present: boolean;
+  size_mb: number | null;
+  modified: string | null;
+}
+
+export interface HealthCheckResponse {
+  lead_database: {
+    xlsx: FileInfo;
+    csv: FileInfo;
+    csv_rows: number | null;
+  };
+  reference_data: {
+    reference_master: FileInfo;
+    reference_master_with_units: FileInfo;
+    reference_master_rows: number | null;
+  };
+  reidin: { parquet: FileInfo; csv: FileInfo };
+  public_scrapers: {
+    bayut_listings: FileInfo;
+    bayut_rows: number | null;
+    pf_listings: FileInfo;
+    pf_rows: number | null;
+  };
+  sqlite: {
+    initialized: boolean;
+    path: string;
+    size_mb: number | null;
+    table_counts: Record<string, number>;
+  };
+  environment: {
+    anthropic_api_key_set: boolean;
+    anthropic_api_key_preview: string | null;
+    jwt_secret_set: boolean;
+    jwt_secret_strong: boolean;
+    claude_model: string;
+    log_level: string;
+  };
+  modules: Record<string, boolean>;
+  building_intelligence: {
+    loaded: boolean;
+    shoreline_towers?: number;
+    building_aliases?: number;
+    error?: string;
+  };
+  overall: { status: "ok" | "degraded"; checked_at: string };
+}
+
+export async function getHealthCheck(): Promise<HealthCheckResponse> {
+  return request<HealthCheckResponse>(`/api/admin/health`);
+}
+
+export interface PfLeadsResponse {
+  rows: Record<string, string>[];
+  total: number;
+  columns?: string[];
+  last_scraped: string | null;
+  csv_path: string;
+  csv_present: boolean;
+}
+
+export async function getPfLeads(limit = 200): Promise<PfLeadsResponse> {
+  return request<PfLeadsResponse>(`/api/admin/pf-leads?limit=${limit}`);
+}
