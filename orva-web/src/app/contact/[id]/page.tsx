@@ -43,7 +43,7 @@ export default function ContactDetailPage() {
   const params = useParams<{ id: string }>();
   const contactId = Number(params.id);
   const router = useRouter();
-  const { authenticated } = useAuth();
+  const { authenticated, loading: authLoading } = useAuth();
 
   const [contact, setContact] = useState<ContactDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,6 +71,7 @@ export default function ContactDetailPage() {
     if (authenticated) refresh();
   }, [authenticated, refresh]);
 
+  if (authLoading) return null;
   if (!authenticated) {
     router.replace("/");
     return null;

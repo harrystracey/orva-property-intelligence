@@ -16,6 +16,13 @@ import {
 
 interface AuthState {
   authenticated: boolean;
+  /**
+   * True until we've checked localStorage for an existing token. Pages that
+   * redirect on `!authenticated` MUST gate their redirect behind `!loading`
+   * -- otherwise every navigation flickers `authenticated=false` for one
+   * render and bounces the user back to the landing page.
+   */
+  loading: boolean;
   username: string | null;
   name: string | null;
   login: (username: string, password: string) => Promise<void>;
@@ -24,6 +31,7 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState>({
   authenticated: false,
+  loading: true,
   username: null,
   name: null,
   login: async () => {},
@@ -32,6 +40,7 @@ const AuthContext = createContext<AuthState>({
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [username, setUsername] = useState<string | null>(null);
   const [name, setName] = useState<string | null>(null);
 
@@ -41,6 +50,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUsername(localStorage.getItem("orva_username"));
       setName(localStorage.getItem("orva_name"));
     }
+    // Whatever we found (token or no token), the check is done.
+    setLoading(false);
 
     // Sync auth state across tabs: if a user logs out in another tab
     // (orva_token cleared), reflect it here too. Without this, a tab
@@ -81,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ authenticated, username, name, login, logout }}>
+    <AuthContext.Provider value={{ authenticated, loading, username, name, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

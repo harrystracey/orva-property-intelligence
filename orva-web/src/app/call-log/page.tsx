@@ -38,7 +38,7 @@ function outcomeSymbol(outcome: string) {
 }
 
 export default function CallLogPage() {
-  const { authenticated } = useAuth();
+  const { authenticated, loading: authLoading } = useAuth();
   const router = useRouter();
   const [calls, setCalls] = useState<CallRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,6 +60,7 @@ export default function CallLogPage() {
     if (authenticated) refresh();
   }, [authenticated, refresh]);
 
+  if (authLoading) return null;
   if (!authenticated) { router.replace("/"); return null; }
 
   const filtered = calls.filter((c) => {

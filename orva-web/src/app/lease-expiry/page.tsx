@@ -26,7 +26,7 @@ function fmtRent(r: number | null): string {
 }
 
 export default function LeaseExpiryPage() {
-  const { authenticated } = useAuth();
+  const { authenticated, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const [data, setData] = useState<LeaseExpiryResponse | null>(null);
@@ -54,6 +54,7 @@ export default function LeaseExpiryPage() {
     if (authenticated) refresh();
   }, [authenticated, refresh]);
 
+  if (authLoading) return null;
   if (!authenticated) {
     router.replace("/");
     return null;

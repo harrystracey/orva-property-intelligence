@@ -125,7 +125,7 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
 }
 
 export default function ChatPage() {
-  const { authenticated } = useAuth();
+  const { authenticated, loading: authLoading } = useAuth();
   const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatId, setChatId] = useState<string | null>(null);
@@ -227,6 +227,7 @@ export default function ChatPage() {
     }
   };
 
+  if (authLoading) return null;
   if (!authenticated) { router.replace("/"); return null; }
 
   const isEmpty = messages.length === 0;

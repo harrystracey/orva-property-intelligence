@@ -14,7 +14,7 @@ import {
 } from "@/lib/api";
 
 export default function ContactsPage() {
-  const { authenticated } = useAuth();
+  const { authenticated, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
@@ -62,6 +62,7 @@ export default function ContactsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authenticated]);
 
+  if (authLoading) return null;
   if (!authenticated) {
     router.replace("/");
     return null;

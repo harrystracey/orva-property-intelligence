@@ -14,7 +14,7 @@ import {
 const BED_OPTS = ["", "Studio", "1", "2", "3", "4", "5", "5+"] as const;
 
 export default function ClientMatchPage() {
-  const { authenticated } = useAuth();
+  const { authenticated, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const [txnType, setTxnType] = useState<"sale" | "rent">("sale");
@@ -31,6 +31,7 @@ export default function ClientMatchPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  if (authLoading) return null;
   if (!authenticated) {
     router.replace("/");
     return null;

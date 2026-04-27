@@ -30,7 +30,7 @@ function isDueToday(iso: string) {
 }
 
 export default function FollowUpsPage() {
-  const { authenticated } = useAuth();
+  const { authenticated, loading: authLoading } = useAuth();
   const router = useRouter();
   const [reminders, setReminders] = useState<ReminderRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,6 +51,7 @@ export default function FollowUpsPage() {
     if (authenticated) refresh();
   }, [authenticated, refresh]);
 
+  if (authLoading) return null;
   if (!authenticated) { router.replace("/"); return null; }
 
   const handleDone = async (id: string) => {

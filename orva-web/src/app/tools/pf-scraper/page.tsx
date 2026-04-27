@@ -37,7 +37,7 @@ const PREFERRED_COLUMNS = [
 ];
 
 export default function PfScraperPage() {
-  const { authenticated } = useAuth();
+  const { authenticated, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const [data, setData] = useState<PfLeadsResponse | null>(null);
@@ -80,6 +80,7 @@ export default function PfScraperPage() {
     return [...ordered, ...rest];
   }, [data]);
 
+  if (authLoading) return null;
   if (!authenticated) {
     router.replace("/");
     return null;

@@ -78,7 +78,7 @@ function isOverdue(iso: string) {
 }
 
 export default function ClientProfilePage() {
-  const { authenticated } = useAuth();
+  const { authenticated, loading: authLoading } = useAuth();
   const params = useParams();
   const router = useRouter();
   const clientId = params?.id as string;
@@ -123,6 +123,7 @@ export default function ClientProfilePage() {
     if (authenticated && clientId) refresh();
   }, [authenticated, clientId, refresh]);
 
+  if (authLoading) return null;
   if (!authenticated) { router.replace("/"); return null; }
 
   if (loading) {

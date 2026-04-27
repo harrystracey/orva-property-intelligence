@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { matchListing, MatchedOwner, MatchListingResponse } from "@/lib/api";
 
 export default function MatcherPage() {
-  const { authenticated } = useAuth();
+  const { authenticated, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const [building, setBuilding] = useState("");
@@ -20,6 +20,7 @@ export default function MatcherPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  if (authLoading) return null;
   if (!authenticated) {
     router.replace("/");
     return null;

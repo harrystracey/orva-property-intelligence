@@ -869,10 +869,11 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
 ];
 
 export default function WhatsAppPage() {
-  const { authenticated } = useAuth();
+  const { authenticated, loading: authLoading } = useAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("campaign");
 
+  if (authLoading) return null;
   if (!authenticated) { router.replace("/"); return null; }
 
   return (

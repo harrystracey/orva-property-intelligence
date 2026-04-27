@@ -15,7 +15,7 @@ function fmtPrice(p: number | null): string {
 }
 
 export default function BayutPage() {
-  const { authenticated } = useAuth();
+  const { authenticated, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const [data, setData] = useState<BayutListingsResponse | null>(null);
@@ -48,6 +48,7 @@ export default function BayutPage() {
     if (authenticated) refresh();
   }, [authenticated, refresh]);
 
+  if (authLoading) return null;
   if (!authenticated) {
     router.replace("/");
     return null;

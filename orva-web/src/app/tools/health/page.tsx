@@ -28,7 +28,7 @@ function fmtTime(iso: string | null): string {
 }
 
 export default function HealthPage() {
-  const { authenticated } = useAuth();
+  const { authenticated, loading: authLoading } = useAuth();
   const router = useRouter();
 
   const [data, setData] = useState<HealthCheckResponse | null>(null);
@@ -51,6 +51,7 @@ export default function HealthPage() {
     if (authenticated) refresh();
   }, [authenticated, refresh]);
 
+  if (authLoading) return null;
   if (!authenticated) {
     router.replace("/");
     return null;
