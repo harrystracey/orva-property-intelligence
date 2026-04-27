@@ -10,7 +10,7 @@ import { searchLeads, lookupClientId, LeadFilters, LeadSearchResponse, LeadRecor
 import { Download } from "lucide-react";
 
 export default function LeadSearchPage() {
-  const { authenticated } = useAuth();
+  const { authenticated, loading: authLoading } = useAuth();
   const router = useRouter();
   const [filters, setFilters] = useState<LeadFilters>({
     page: 1,
@@ -81,6 +81,10 @@ export default function LeadSearchPage() {
     }
   };
 
+  // Render nothing during the brief auth-state hydration window so we don't
+  // flash the landing page when the user navigates back to "/" -- they'd
+  // perceive that as "Leads bounced me to homepage".
+  if (authLoading) return null;
   if (!authenticated) {
     return <LandingPage />;
   }

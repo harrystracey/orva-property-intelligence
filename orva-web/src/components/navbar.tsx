@@ -76,8 +76,6 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 const TOOL_ITEMS: NavItem[] = [
-  { href: "/tools/pf-scraper", label: "PF Scraper", icon: <Wrench size={16} /> },
-  { href: "/tools/reidin", label: "Reidin", icon: <Wrench size={16} /> },
   { href: "/matcher", label: "Matcher", icon: <Crosshair size={16} /> },
   { href: "/tools/health", label: "Health", icon: <Wrench size={16} /> },
 ];
