@@ -2,7 +2,11 @@
  * API client for ORVA FastAPI backend.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Default to empty (relative URLs) so fetches go through the current origin
+// and nginx proxies /api/* to the API container. Set NEXT_PUBLIC_API_URL
+// to "http://localhost:8000" only when running orva-web in dev against a
+// local API without nginx in front.
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;

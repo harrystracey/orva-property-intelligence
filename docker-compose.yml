@@ -26,10 +26,12 @@ services:
   web:
     build:
       context: ./orva-web
+      # No build args -- the Dockerfile defaults NEXT_PUBLIC_API_URL to empty
+      # so the bundle uses relative URLs and nginx (on the host) proxies
+      # /api/* to the api container. No mixed-content blocking on HTTPS,
+      # no CORS preflight needed.
     ports:
       - "3000:3000"
-    environment:
-      NEXT_PUBLIC_API_URL: "http://YOUR_SERVER_IP:8000"
     restart: unless-stopped
     depends_on:
       - api

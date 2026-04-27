@@ -4,7 +4,12 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-ARG NEXT_PUBLIC_API_URL=http://YOUR_SERVER_IP:8000
+# Default to empty (relative URLs) so fetches go through whatever origin the
+# user is on -- in production that's https://orvauae.com and nginx proxies
+# /api/* to the FastAPI container. No mixed-content blocking, no CORS
+# preflight. Set NEXT_PUBLIC_API_URL via docker-compose `args:` if you
+# need a different base in dev.
+ARG NEXT_PUBLIC_API_URL=
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
 
