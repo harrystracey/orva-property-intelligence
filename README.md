@@ -1,6 +1,6 @@
 # ORVA — Property Intelligence Platform
 
-> Full-stack real estate intelligence SaaS for Dubai's Palm Jumeirah market. Built entirely solo from scratch.
+> A production AI platform built solo from scratch: multi-source data enrichment, Claude tool-use integration, real-time SSE, WhatsApp automation, and a 15-table SQLite backend — applied to the Dubai real estate market.
 
 <p align="center">
   <img src="screenshots/01-lead-search.svg" alt="Lead Search — 78,975 Palm Jumeirah owner contacts" width="100%"/>
@@ -10,17 +10,17 @@
 
 ## The Builder
 
-I'm Harry Stracey — a Dubai real estate broker with no computer science background. I built ORVA because the tools available to agents were either too generic or too expensive, and I had a very specific problem: I needed to find the right owner to call, at the right moment, before anyone else did.
+I'm Harry Stracey — a real estate broker turned software developer. I built ORVA to solve a specific production problem: finding the right property owner to call, at the right moment, before competitors did. No data vendor offered what I needed, so I built it.
 
-I started with a 4,500-line Streamlit script in late 2024. It worked for basic lead search but fell apart the moment I tried to do anything real: Streamlit can't handle streaming WhatsApp campaign progress in real time, chokes on 78K records, and can't sit behind nginx without hacks.
+I started with a 4,500-line Streamlit script in late 2024 and taught myself the full stack by shipping it into production and debugging what broke. Streamlit couldn't stream real-time WhatsApp campaign progress, choked on 78K records, and couldn't sit behind nginx. The rewrite to FastAPI + Next.js was forced, not planned.
 
-The full rewrite to a proper platform wasn't planned — it was forced by production failures:
+**Real bugs, real fixes:**
 
-- **SQLite WAL locking** crashed the API on the first real-data deploy. The fix exposed that 8 separate CSV loaders were racing over the same files. I replaced them with a unified Alembic-managed schema and removed 3,000 lines in the process.
-- **WhatsApp account bans** forced me to build real rate limiting. The naive in-memory counter lost its state on restart — accounts burned through the daily limit on reboot. I built a persistent quota that survives process restarts; it now has a dedicated regression test.
-- **CORS + JWT + SSE** broke simultaneously on the first production deploy. `EventSource` (the browser API for SSE) can't send `Authorization` headers — the backend was silently dropping AI chat streams. Fixed with a `?token=` query-param fallback; both paths are in the test suite.
+- **SQLite WAL locking** crashed the API on the first real-data deploy. The fix exposed 8 CSV loaders racing over the same files. Replaced with a unified Alembic-managed schema and removed 3,000 lines in the process.
+- **WhatsApp account bans** forced real rate limiting. An in-memory counter loses state on restart — accounts burned the daily limit on reboot. Built a persistent disk-backed quota with a regression test that verifies it survives process restart.
+- **CORS + JWT + SSE** broke simultaneously on the first production deploy. `EventSource` can't send `Authorization` headers — the API was silently dropping AI chat streams. Fixed with a `?token=` query-param fallback; both paths are in the test suite.
 
-No CS degree. No bootcamp. Just: *"Make it work, then make it right."*
+Self-taught. Shipped to production. Maintained through failures. *"Make it work, then make it right."*
 
 ---
 
@@ -123,10 +123,12 @@ result = expiring.merge(
 
 ## Screenshots
 
+> *UI mockups illustrating the actual application — the platform was deployed to production and used in practice.*
+
 | | |
 |---|---|
 | <img src="screenshots/02-ai-chat.svg" alt="HLM AI Chat" width="100%"/> | <img src="screenshots/03-whatsapp-campaign.svg" alt="WhatsApp Campaign Builder" width="100%"/> |
-| **HLM AI Chat** — Claude-powered with 12 custom property tools, streamed via SSE | **WhatsApp Campaigns** — dual-account, 36/day rate limit, live progress |
+| **HLM AI Chat** — Claude tool-use with 12 custom property tools, streamed via SSE | **WhatsApp Campaigns** — dual-account, 36/day rate limit, live SSE progress |
 
 | | |
 |---|---|
@@ -136,7 +138,7 @@ result = expiring.merge(
 <p align="center">
   <img src="screenshots/06-mobile-nav.svg" alt="Mobile UI" width="320"/>
   <br/>
-  <em>Used on a phone during client meetings — mobile-first was a requirement, not a nice-to-have</em>
+  <em>Mobile-first — used on a phone during client meetings</em>
 </p>
 
 ---
@@ -177,7 +179,7 @@ result = expiring.merge(
 ## Architecture
 
 ```
-                        orvauae.com (HTTPS)
+                        domain.com (HTTPS + nginx)
                                │
                            [nginx]
                           /         \
@@ -200,17 +202,18 @@ result = expiring.merge(
 
 ## Key Features
 
-### 🔍 Lead Search
-- 78,975 Palm Jumeirah owner contacts with phones, transaction history, unit details
+### 🤖 AI Chat — Claude Tool-Use Integration
+- Claude Sonnet with **12 custom property tools** implemented via Anthropic's tool-use API
+- Tools: `search_leads_for_ai`, `get_building_info_for_ai`, `get_market_stats_for_ai`, `get_listings_below_market_for_ai`, `get_portfolio_summary_for_ai`, `find_potential_owners_for_ai`, `cross_reference_sale_with_leads_for_ai`, `get_complete_building_intel_for_ai`, `get_propertyfinder_listings_for_ai`, and more
+- Responses streamed via SSE with real-time tool-call visibility
+- `?token=` query-param fallback for `EventSource` browser auth limitation (can't send `Authorization` headers)
+- Persistent conversation history per session; tool functions live in a separate `ai_queries.py` module with their own test suite
+
+### 🔍 Lead Search & Data Enrichment
+- 78,975 owner contacts enriched across 6 sources via a 10-priority inference cascade
 - Filter by building, bedrooms, size, sorted by completeness score
 - Completeness scoring: phone 30% · name 25% · unit 20% · beds 15% · size 10%
 - Paginated (250/page), full CSV export
-
-### 🤖 HLM — AI Property Intelligence
-- Claude Sonnet with **12 custom property tools** via tool-use API
-- Tools: `search_leads_for_ai`, `get_building_info_for_ai`, `get_market_stats_for_ai`, `get_listings_below_market_for_ai`, `get_portfolio_summary_for_ai`, `find_potential_owners_for_ai`, `cross_reference_sale_with_leads_for_ai`, `get_complete_building_intel_for_ai`, `get_propertyfinder_listings_for_ai`, and more
-- Responses streamed via SSE; `?token=` fallback for browser EventSource auth limitation
-- Persistent conversation history per session
 
 ### 📱 WhatsApp Campaigns
 - Dual WhatsApp account support (2 Baileys Node.js servers on :3001/:3002)
@@ -376,4 +379,4 @@ Net result of the full conversion arc: 86 files changed, +10,186 / −12,367 lin
 
 ---
 
-*Palm Jumeirah, Dubai — 2025–2026*
+*Dubai, UAE — 2025–2026*
