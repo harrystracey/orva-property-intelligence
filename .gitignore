@@ -79,6 +79,15 @@ scraped_data/pf_chrome_profile/
 propertyfinder_scraper/pf_chrome_profile/
 bayut_scraper/chrome_debug_profile/
 
+# IDE / AI tooling (not part of the application)
+.cursorignore
+.claude/
+
+# Debug artifacts
+scraped_data/*.png
+scraped_data/*.log
+data/wm_canvas_component/
+
 # Data files with personal data or business IP — never commit
 *.backup
 *.backup_*
