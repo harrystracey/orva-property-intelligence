@@ -8,16 +8,116 @@
 
 ---
 
-## What it does
+## The Builder
 
-ORVA is a production-grade property intelligence platform built for Dubai real estate agents working the Palm Jumeirah market. It turns a database of **78,975 owner contacts** and **36,500+ DLD transactions** into actionable outreach intelligence.
+I'm Harry Stracey — a Dubai real estate broker with no computer science background. I built ORVA because the tools available to agents were either too generic or too expensive, and I had a very specific problem: I needed to find the right owner to call, at the right moment, before anyone else did.
 
-At its core:
-- **Search any of 78,975 Palm Jumeirah owner contacts** by building, unit, bedroom count, size, and completeness score — ranked so the best leads surface first
-- **AI-powered market analysis** via a Claude-backed chat interface with 12 custom property tools (portfolio lookup, yield calculation, expiring lease identification, building intel, and more)
-- **WhatsApp campaign automation** with dual-account support, real-time progress, and a 36-message/day rate limit that persists across restarts
-- **Lease expiry intelligence** — cross-reference 4,569 Ejari rental contracts with owner data to surface landlords whose tenants are leaving in the next 30–90 days
-- **Listing matching** — match a live Bayut/PropertyFinder listing to the unit owner in the database in under a second
+I started with a 4,500-line Streamlit script in late 2024. It worked for basic lead search but fell apart the moment I tried to do anything real: Streamlit can't handle streaming WhatsApp campaign progress in real time, chokes on 78K records, and can't sit behind nginx without hacks.
+
+The full rewrite to a proper platform wasn't planned — it was forced by production failures:
+
+- **SQLite WAL locking** crashed the API on the first real-data deploy. The fix exposed that 8 separate CSV loaders were racing over the same files. I replaced them with a unified Alembic-managed schema and removed 3,000 lines in the process.
+- **WhatsApp account bans** forced me to build real rate limiting. The naive in-memory counter lost its state on restart — accounts burned through the daily limit on reboot. I built a persistent quota that survives process restarts; it now has a dedicated regression test.
+- **CORS + JWT + SSE** broke simultaneously on the first production deploy. `EventSource` (the browser API for SSE) can't send `Authorization` headers — the backend was silently dropping AI chat streams. Fixed with a `?token=` query-param fallback; both paths are in the test suite.
+
+No CS degree. No bootcamp. Just: *"Make it work, then make it right."*
+
+---
+
+## What it Does
+
+ORVA is a production-grade property intelligence platform for Dubai's Palm Jumeirah market. It turns **78,975 owner contacts** and **36,500+ DLD title-deed transactions** into actionable outreach intelligence.
+
+**Core workflow:**
+1. Search 78,975 Palm Jumeirah owner contacts by building, unit, bedrooms, size, or completeness score
+2. Cross-reference owners against 4,569 Ejari rental contracts to surface landlords with expiring leases
+3. Match live Bayut/PropertyFinder listings to unit owners in the database in under a second
+4. Run WhatsApp campaigns with dual-account support, rate limiting, and real-time progress
+5. Ask the AI assistant market questions: yields, portfolio summaries, comparable transactions, outreach timing
+
+---
+
+## How the Data Engine Works
+
+The technical core of ORVA is a multi-source data join that builds a complete picture of a property and its owner from six separate data sources. Here's a concrete walkthrough using synthetic data.
+
+### The scenario: spotting the right moment to call
+
+**Source 1 — Lead database** (78,975 owner records)
+```
+Owner:    Ahmed Al Mansoori   ← name from title deed records
+Building: Shoreline Apt. 9
+Unit:     S-201
+Phone:    +971 50 XXX XXXX    ← contact number
+Bedrooms: ?                   ← unknown in source file, needs inference
+```
+
+**Source 2 — Bedroom inference cascade** (10-priority system)
+
+The bedroom count for S-201 isn't in the lead record. The cascade tries each source in order until one resolves:
+
+| Priority | Source | Result for S-201 |
+|---|---|---|
+| P0 | DLD title deed reference | **2 BR ✓** — match found, cascade stops |
+| P1 | Original lead file | (would try if P0 failed) |
+| P2 | Unit registry (6-source merged, ~30K units) | (would try if P1 failed) |
+| P3 | Bayut size-match ±75 sqft consensus | (would try if P2 failed) |
+| P4–P6 | Building schema, patterns, defaults | (last resort) |
+
+Getting this right matters: sending a pitch to an owner with the wrong bedroom count destroys credibility in a market where everyone knows everyone.
+
+**Source 3 — DLD title-deed transaction** (36,500 records)
+```
+Building: Shoreline Apt. 9
+Unit:     S-201
+Date:     15 Jan 2024           ← Ahmed bought this unit 16 months ago
+Price:    AED 2,450,000
+Size:     1,450 sqft
+```
+→ *Ahmed is a relatively recent buyer, not a long-term holder. His holding cost is known.*
+
+**Source 4 — Ejari rental contract** (4,569 contracts)
+```
+Building:  Shoreline Apt. 9
+Unit:      S-201
+Lease end: 03 May 2026          ← expires in 6 days
+Annual:    AED 155,000          ← current market rent for this unit
+```
+→ *His tenant is about to leave. He'll need to re-let or consider selling.*
+
+**Source 5 — Live Bayut listing** (public scraper)
+```
+Building: Shoreline Apt. 9
+Bedrooms: 2 BR
+Price:    AED 2,650,000         ← comparable unit listed 2 weeks ago
+Listed:   actively marketing
+```
+→ *A similar unit is already competing in the market.*
+
+### What ORVA surfaces to the agent
+
+> **"Ahmed Al Mansoori owns S-201 (2BR, 1,450 sqft, Shoreline 9). He bought it 16 months ago for AED 2.45M. His tenant's lease expires in 6 days. A comparable unit is live on Bayut at AED 2.65M. Call him now — he knows the market is moving and his tenant situation gives him a reason to act."**
+
+This is a warm, informed call. Not cold outreach.
+
+### How the join works technically
+
+All six data sources are normalised to a `(building_key, unit_key)` composite key. The lease-expiry cross-reference used to run as an O(rentals × 78K leads) Python loop — ~360 million iterations, which timed out on a 1-vCPU VPS. It's now a single vectorised pandas merge, completing in under a second.
+
+```python
+# Normalise keys on both sides
+expiring['_bldg_key'] = expiring['building_name'].str.lower().str.strip()
+expiring['_unit_key'] = expiring['unit_number'].str.lower().str.strip()
+leads['_bldg_key']   = leads['building_name'].str.lower().str.strip()
+leads['_unit_key']   = leads['unit_number'].str.lower().str.strip()
+
+# One merge replaces the O(N×M) loop
+result = expiring.merge(
+    leads[['_bldg_key', '_unit_key', 'owner_name', 'phone']],
+    on=['_bldg_key', '_unit_key'],
+    how='left',
+)
+```
 
 ---
 
@@ -26,17 +126,17 @@ At its core:
 | | |
 |---|---|
 | <img src="screenshots/02-ai-chat.svg" alt="HLM AI Chat" width="100%"/> | <img src="screenshots/03-whatsapp-campaign.svg" alt="WhatsApp Campaign Builder" width="100%"/> |
-| **HLM AI Chat** — Claude-powered market intelligence with 12 custom property tools | **WhatsApp Campaigns** — Dual-account automation, rate-limited at 36/day, live progress |
+| **HLM AI Chat** — Claude-powered with 12 custom property tools, streamed via SSE | **WhatsApp Campaigns** — dual-account, 36/day rate limit, live progress |
 
 | | |
 |---|---|
 | <img src="screenshots/04-client-profile.svg" alt="Client Profile" width="100%"/> | <img src="screenshots/05-lease-expiry.svg" alt="Lease Expiry Dashboard" width="100%"/> |
-| **Client Profile** — Full CRM: portfolio, notes, call log, follow-up reminders | **Lease Expiry** — Ejari rental contracts cross-referenced with owner contacts |
+| **Client Profile** — CRM: portfolio, notes, call log, follow-up reminders | **Lease Expiry** — Ejari contracts cross-referenced with owner contacts, urgency-coded |
 
 <p align="center">
   <img src="screenshots/06-mobile-nav.svg" alt="Mobile UI" width="320"/>
   <br/>
-  <em>Mobile-first UI — works on phone while walking into meetings</em>
+  <em>Used on a phone during client meetings — mobile-first was a requirement, not a nice-to-have</em>
 </p>
 
 ---
@@ -56,7 +156,7 @@ At its core:
 ![Alembic](https://img.shields.io/badge/Alembic-6B7280)
 
 **AI / Automation**
-![Anthropic](https://img.shields.io/badge/Claude_3.7_Sonnet-D97706?logo=anthropic)
+![Anthropic](https://img.shields.io/badge/Claude_Sonnet-D97706?logo=anthropic)
 ![Playwright](https://img.shields.io/badge/Playwright-45ba4b?logo=playwright&logoColor=white)
 
 **Infrastructure**
@@ -64,99 +164,103 @@ At its core:
 ![Nginx](https://img.shields.io/badge/Nginx-009639?logo=nginx&logoColor=white)
 ![Ubuntu](https://img.shields.io/badge/Ubuntu_22.04_VPS-E95420?logo=ubuntu&logoColor=white)
 
+### Why these choices
+
+- **FastAPI** — async-native. Both WhatsApp campaign progress and AI chat need long-lived SSE connections. Django/Flask can't do this without extra machinery.
+- **SQLite + WAL** — right-sized for a single-server SaaS. WAL mode gives concurrent reads with no connection pool. Alembic versions every schema change so upgrading to Postgres is a migration, not a rewrite.
+- **Next.js** — the app is used on a phone during client meetings. Mobile-first was a requirement, not a nice-to-have. Next.js standalone build keeps the Docker image small.
+- **Baileys (WhatsApp)** — zero per-message cost vs. Twilio's pay-per-SMS. Full control over session persistence and rate limiting, which would be impossible via a managed API.
+- **Playwright for scraping** — headless Chrome handles JS-rendered property portals (Bayut, PropertyFinder) that simple HTTP scrapers can't reach.
+
 ---
 
 ## Architecture
 
 ```
                         orvauae.com (HTTPS)
-                              │
-                          [nginx]
-                         /         \
-              ┌──────────┐       ┌──────────────┐
-              │ orva-web │       │   orva_api   │
-              │ Next.js  │──────▶│   FastAPI    │
-              │ :3000    │       │   :8000      │
-              └──────────┘       └──────┬───────┘
-                                        │
-                         ┌──────────────┼──────────────┐
-                         │              │              │
-                    ┌────▼────┐  ┌──────▼──────┐  ┌───▼──────┐
-                    │ SQLite  │  │  CSV/Parquet │  │ Baileys  │
-                    │  WAL    │  │  78K leads   │  │ WhatsApp │
-                    │ 15 tbls │  │  36.5K DLD   │  │ :3001/02 │
-                    └─────────┘  └─────────────┘  └──────────┘
+                               │
+                           [nginx]
+                          /         \
+               ┌──────────┐       ┌──────────────┐
+               │ orva-web │       │   orva_api   │
+               │ Next.js  │──────▶│   FastAPI    │
+               │ :3000    │       │   :8000      │
+               └──────────┘       └──────┬───────┘
+                                         │
+                          ┌──────────────┼──────────────┐
+                          │              │              │
+                     ┌────▼────┐  ┌──────▼──────┐  ┌───▼──────┐
+                     │ SQLite  │  │  CSV/Parquet │  │ Baileys  │
+                     │  WAL    │  │  78K leads   │  │ WhatsApp │
+                     │ 15 tbls │  │  36.5K DLD   │  │ :3001/02 │
+                     └─────────┘  └─────────────┘  └──────────┘
 ```
-
-**Three services, one `docker-compose.yml`:**
-
-| Service | Tech | Role |
-|---|---|---|
-| `web` | Next.js 16, React 19, Tailwind v4 | Customer-facing UI |
-| `api` | FastAPI, Python 3.11, Pydantic | REST API + AI tools |
-| `wa-1` / `wa-2` | Node.js, Baileys | WhatsApp automation |
-
----
-
-## Data Engine
-
-The core of the platform is a **10-priority bedroom inference cascade** that determines the correct number of bedrooms for a lead when the source data is incomplete:
-
-```
-Priority 0:   Exact DLD reference lookup (title deed)
-Priority 1:   Original data in the lead file
-Priority 1.5: Live PropertyMonitor DLD lookup
-Priority 2:   Unit registry (6-source merged CSV, ~30K units)
-Priority 2.3: Live PropertyFinder scraper lookup
-Priority 2.6: Bayut size-match (±75 sqft consensus)
-Priority 3:   Static building schema (Shoreline, Oceana, etc.)
-Priority 3.5: Dynamic schema (auto-learned suffix patterns)
-Priority 4:   Unit pattern table
-Priority 5:   Size-based inference
-Priority 6:   Building defaults
-```
-
-This matters because sending a pitch to an owner with the wrong bedroom count destroys credibility. The cascade runs on every lead at load time.
 
 ---
 
 ## Key Features
 
 ### 🔍 Lead Search
-- **78,975 Palm Jumeirah owner contacts** with phone numbers, transaction history, unit details
-- Filter by building, bedrooms, size range — sorted by completeness score
-- Paginated at 250/page, exports full results to CSV
-- Per-lead completeness scoring (phone 30% · name 25% · unit 20% · beds 15% · size 10%)
+- 78,975 Palm Jumeirah owner contacts with phones, transaction history, unit details
+- Filter by building, bedrooms, size, sorted by completeness score
+- Completeness scoring: phone 30% · name 25% · unit 20% · beds 15% · size 10%
+- Paginated (250/page), full CSV export
 
 ### 🤖 HLM — AI Property Intelligence
-- Claude Sonnet 3.7 with **12 custom property tools** via tool-use API
-- Tools include: `search_leads_for_ai`, `get_building_info_for_ai`, `get_market_stats_for_ai`, `get_listings_below_market_for_ai`, `get_portfolio_summary_for_ai`, `find_potential_owners_for_ai`, `cross_reference_sale_with_leads_for_ai`, `get_complete_building_intel_for_ai`, `get_propertyfinder_listings_for_ai`, and more
-- Streamed responses via Server-Sent Events (SSE)
-- Persistent chat history per conversation
+- Claude Sonnet with **12 custom property tools** via tool-use API
+- Tools: `search_leads_for_ai`, `get_building_info_for_ai`, `get_market_stats_for_ai`, `get_listings_below_market_for_ai`, `get_portfolio_summary_for_ai`, `find_potential_owners_for_ai`, `cross_reference_sale_with_leads_for_ai`, `get_complete_building_intel_for_ai`, `get_propertyfinder_listings_for_ai`, and more
+- Responses streamed via SSE; `?token=` fallback for browser EventSource auth limitation
+- Persistent conversation history per session
 
 ### 📱 WhatsApp Campaigns
-- Dual WhatsApp account support (2 Baileys Node.js servers)
-- 36-message/day rate limit persisted to CSV across restarts
-- Campaign builder: filter leads → preview queue → send with live progress
-- Message log, reply detection, excluded-phone-number management
-- Personalised message templates that adapt based on owner type
+- Dual WhatsApp account support (2 Baileys Node.js servers on :3001/:3002)
+- 36-message/day rate limit **persisted to disk** — survives process restart
+- Campaign builder: filter leads → preview queue → send with SSE live progress
+- Message log, reply detection, excluded-number list, per-owner personalisation
 
 ### 🏠 Lease Expiry Dashboard
-- 4,569 Ejari rental contracts from PropertyMonitor
-- Cross-reference expiring leases against owner contact database
+- 4,569 Ejari rental contracts cross-referenced against owner database
 - Filter by window (30/60/90/180 days), building, bedrooms
-- 62% of expiring leases have matched owner contact data
-- Export to CSV for targeted calling campaigns
+- Urgency colour-coding: red (≤30 days), amber (≤60 days)
+- CSV export for targeted calling
 
 ### 📊 Listing Matcher
-- Match a Bayut / PropertyFinder listing URL → owner in database
-- Three-pass confidence scoring: exact unit (95%) → exact size (90%) → beds + size range (40–60%)
-- Sub-second results from the 78K lead index
+- Match a Bayut/PropertyFinder listing → owner in database
+- Three-pass confidence: exact unit (95%) → exact size (90%) → beds + size range (40–60%)
+- Sub-second on 78K indexed leads
 
 ### 👥 Contacts CRM
 - Standalone contacts separate from the owner database (buyers, tenants, brokers)
-- Properties, linked leads, budget ranges, notes, follow-ups, call log
-- Auto-link to lead database by phone number on creation
+- Properties, linked leads, budget, notes, follow-ups, call log
+- Auto-link to lead database by phone on creation
+
+---
+
+## Local Development
+
+```bash
+# Requirements: Python 3.11+, Node 18+, Docker Compose v2
+
+cp .env.example .env       # set ANTHROPIC_API_KEY and JWT_SECRET (>= 32 chars)
+
+# Backend
+pip install -r requirements.txt
+alembic upgrade head
+uvicorn orva_api.main:app --reload     # API on http://localhost:8000
+
+# Frontend (separate terminal)
+cd orva-web
+npm install
+npm run dev                            # UI on http://localhost:3000
+
+# Or run the full stack with Docker
+docker compose up --build
+```
+
+The API will start with an empty SQLite database. To populate with leads:
+```bash
+python migrate_existing_data.py        # requires leads_master.csv in lead_database/
+```
 
 ---
 
@@ -182,7 +286,7 @@ whatsapp_messages
 scraped_units
 ```
 
-Multi-tenant ready: every table carries a `tenant_id` column (default `'orva'`). Schema changes are versioned via Alembic.
+Multi-tenant ready: every table carries a `tenant_id` column (default `'orva'`). Schema changes versioned via Alembic.
 
 ---
 
@@ -195,13 +299,13 @@ Multi-tenant ready: every table carries a `tenant_id` column (default `'orva'`).
 | `auth` | `POST /api/auth/login`, `GET /api/auth/me` |
 | `leads` | `GET /api/leads?building=Shoreline&bedrooms=2` |
 | `clients` | `GET /api/clients/{id}`, `POST /api/clients/{id}/notes` |
-| `contacts` | Full CRUD, property management, lead auto-linking |
+| `contacts` | Full CRUD + property management + lead auto-linking |
 | `listings` | `GET /api/lease-expiry`, `POST /api/match/listing`, `GET /api/bayut/listings`, `POST /api/client-match` |
 | `chat` | `POST /api/chat` (SSE streaming), conversation history |
 | `whatsapp` | Campaign builder, stats, `GET /api/whatsapp/progress` (SSE) |
 | `admin` | `GET /api/admin/health`, `GET /api/admin/backup` |
 
-JWT authentication with 7-day expiry. Token carried in `Authorization: Bearer` header or `?token=` query param (for SSE endpoints that browser can't authenticate via headers).
+JWT authentication (7-day expiry). Bearer header for standard endpoints; `?token=` query-param for SSE endpoints where `EventSource` can't send headers.
 
 ---
 
@@ -216,7 +320,7 @@ JWT authentication with 7-day expiry. Token carried in `Authorization: Bearer` h
 | `test_data_consolidation.py` | SQLite schema + 6-source importer pipeline |
 | `test_sqlite_cutover_and_hardening.py` | SQLite-first loader, tenant_id migration, admin endpoints |
 | `test_alembic_and_tenants.py` | Alembic upgrade/downgrade, multi-tenant isolation |
-| `test_restricted_scrapers_removed.py` | Phase-2 cleanup enforcement |
+| `test_restricted_scrapers_removed.py` | Cleanup enforcement (deleted code stays deleted) |
 | `orva_api/test_contacts_router.py` | Contacts API (CRUD, auth, 409 dedup, 422 validation) |
 | `orva_api/test_listings_router.py` | Lease/Bayut/Match endpoints, empty-data safety |
 | `orva_api/test_cleanup.py` | API hygiene: sys.path, model constant, typed params |
@@ -228,43 +332,47 @@ JWT authentication with 7-day expiry. Token carried in `Authorization: Bearer` h
 
 ## Deployment
 
-Single-command deploy via Docker Compose:
-
 ```bash
 git pull
 alembic upgrade head
 docker compose up -d --build
 ```
 
-Four containers:
-- `api` — FastAPI (non-root user, `HEALTHCHECK` every 30s)
-- `web` — Next.js standalone build
-- `wa-1` / `wa-2` — WhatsApp Baileys servers
+Four containers: `api` (non-root user, `HEALTHCHECK` every 30s), `web` (Next.js standalone), `wa-1` / `wa-2` (WhatsApp Baileys). Nginx handles SSL and proxies `/api/*` to FastAPI.
 
-Nginx handles SSL termination and proxies `/api/*` to the FastAPI container.
+---
+
+## Performance & Scale
+
+- **Lead search** on 78,975 rows with indexed filters: sub-200ms p99 via SQLite B-tree indexes on building, bedrooms, phone, owner
+- **Lease-expiry cross-reference**: was O(rentals × 78K leads) = ~360M Python iterations (timed out); vectorised to a single pandas merge, now sub-second
+- **SQLite WAL**: concurrent readers + single writer; no connection pool needed at current scale
+- **Practical ceiling**: ~10 concurrent users before write-lock latency becomes noticeable. Scale path: swap SQLite for PostgreSQL — Alembic makes this a schema copy, not a rewrite
+
+---
+
+## Known Limitations
+
+- **Single-server SQLite**: right-sized for the current use case; would need Postgres for horizontal scale (Alembic migration path is ready)
+- **WhatsApp automation**: operates in a grey area of WhatsApp's ToS; 36/day rate limit + randomised send intervals + exclusion list mitigate ban risk
+- **Data freshness**: Bayut listings are scraped on-demand; Ejari rental data is frozen at last sync (no live Ejari API)
+- **No encryption at rest**: SQLite file relies on VPS filesystem security; row-level encryption is a future milestone
 
 ---
 
 ## The Engineering Story
 
-This started as a 4,500-line Streamlit script. Over the course of an intensive development arc it was restructured into a production multi-tenant platform:
+Started as a 4,500-line Streamlit monolith. Hit production limits immediately: Streamlit can't stream real-time WhatsApp updates, can't handle 78K records without freezing, can't deploy behind nginx without hacks.
 
-- **9 code-quality PRs** — bedroom cascade accuracy, ban-risk hardening, auth security, typed API, Docker hardening
-- **SaaS conversion** — deleted restricted scrapers, ported all Streamlit pages to Next.js, moved from CSV-per-source to unified SQLite
-- **13 regressions fixed** — in production, across auth, SQLite WAL, nginx routing, mixed-content HTTPS, timeout vectorisation
-- **Net result**: −12,000 lines removed, +10,000 lines of real production code added
+The full rewrite wasn't planned — it was forced by production failures:
 
-The commit history in this repo tells the full story.
+**SQLite WAL locking** crashed the API on first real-data deploy. The fix exposed that 8 separate CSV loaders were racing over the same files. Replaced with a unified Alembic-managed schema; removed 3,000 lines in the process.
 
----
+**WhatsApp bans** forced real rate limiting. The naive approach (in-memory counter) lost its state on restart, so accounts burned through the daily limit on reboot. Built a persistent CSV-backed quota with a regression test that verifies it survives process restart.
 
-## About
+**CORS + JWT + SSE** broke simultaneously on first production deploy. `EventSource` can't send `Authorization` headers — the backend was silently dropping AI chat streams. Fixed with a `?token=` query-param fallback; both paths now have dedicated test coverage.
 
-Built by **Harry Stracey** — a Dubai real estate broker who taught himself to code to solve a problem that existing tools couldn't.
-
-No framework tutorials. No bootcamp. Just: "this needs to exist, how do I build it."
-
-> *"What is this, it's not a Streamlit app anymore."*
+Net result of the full conversion arc: 86 files changed, +10,186 / −12,367 lines. The deletions are the real achievement — they represent hacks replaced by architecture.
 
 ---
 
