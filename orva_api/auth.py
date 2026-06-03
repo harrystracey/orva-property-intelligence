@@ -25,7 +25,9 @@ _FALLBACK_USERS = {
     "harry": {
         "name": "Harry",
         "email": "admin@orva.app",
-        "password_hash": "PLACEHOLDER_HASH_SEE_AUTH_CONFIG",
+        # This is a placeholder hash. Set a real password via USERS_FILE in production.
+        # Generate: python -c "import bcrypt; print(bcrypt.hashpw(b'YOUR_PASSWORD', bcrypt.gensalt(rounds=12)).decode())"
+        "password_hash": "$2b$12$At5kSI362oUTvg./PQB/OuG3D13zYPmyHBHr/j038yLItkfA6Z4MC",
     }
 }
 
