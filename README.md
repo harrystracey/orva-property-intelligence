@@ -10,7 +10,7 @@
 
 ## The Builder
 
-I'm Harry Stracey — a real estate broker turned software developer. I built ORVA to solve a specific production problem: finding the right property owner to call, at the right moment, before competitors did. No data vendor offered what I needed, so I built it.
+I'm Harry Stracey. I built ORVA to solve a specific production problem: finding the right property owner to call, at the right moment, before competitors did. No data vendor offered what I needed, so I built it.
 
 I started with a 4,500-line Streamlit script in late 2024 and taught myself the full stack by shipping it into production and debugging what broke. Streamlit couldn't stream real-time WhatsApp campaign progress, choked on 78K records, and couldn't sit behind nginx. The rewrite to FastAPI + Next.js was forced, not planned.
 
