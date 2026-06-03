@@ -78,3 +78,13 @@ scraped_data/chrome_debug_profile/
 scraped_data/pf_chrome_profile/
 propertyfinder_scraper/pf_chrome_profile/
 bayut_scraper/chrome_debug_profile/
+
+# Data files with personal data or business IP — never commit
+*.backup
+*.backup_*
+whatsapp_bot/message_log.csv
+whatsapp_bot/chat_scans.csv
+whatsapp_bot/excluded_phones.json
+whatsapp_bot/sent_log.csv
+whatsapp_bot/custom_templates.json
+Master reference datasets/
