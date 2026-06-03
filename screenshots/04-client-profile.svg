@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760">
+  <defs><style>text{font-family:-apple-system,'Segoe UI',Arial,sans-serif}.serif{font-family:Georgia,'Times New Roman',serif}</style></defs>
+  <rect width="1280" height="760" fill="#faf9f6"/>
+  <!-- Navbar -->
+  <rect width="1280" height="48" fill="#ffffff" stroke="#e5e1d8" stroke-width="1"/>
+  <text x="20" y="27" class="serif" font-size="14" font-weight="300" letter-spacing="3" fill="#1a1a1a">ORVA</text>
+  <text x="20" y="39" font-size="7" letter-spacing="2" fill="#8a8578">PROPERTY INTELLIGENCE</text>
+
+  <!-- Back button + header -->
+  <rect x="20" y="64" width="70" height="30" rx="6" stroke="#e5e1d8" fill="white"/>
+  <text x="55" y="83" font-size="12" fill="#8a8578" text-anchor="middle">← Back</text>
+  <text x="110" y="83" font-size="18" font-weight="600" fill="#1a1a1a">Ahmed Al Mansoori</text>
+  <rect x="1180" y="64" width="80" height="30" rx="6" fill="#b8860b"/>
+  <text x="1220" y="83" font-size="12" font-weight="600" fill="white" text-anchor="middle">HLM Chat</text>
+
+  <!-- Contact card -->
+  <rect x="20" y="106" width="580" height="140" rx="10" fill="white" stroke="#e5e1d8"/>
+  <text x="40" y="132" font-size="13" font-weight="600" fill="#1a1a1a">Contact Information</text>
+  <text x="40" y="158" font-size="11" fill="#8a8578">Phone</text>
+  <text x="40" y="174" font-size="13" fill="#b8860b">+971 50 234 5678</text>
+  <text x="200" y="158" font-size="11" fill="#8a8578">Building</text>
+  <text x="200" y="174" font-size="13" fill="#1a1a1a">Shoreline Apt. 9</text>
+  <text x="380" y="158" font-size="11" fill="#8a8578">Unit</text>
+  <text x="380" y="174" font-size="13" fill="#1a1a1a">S-201</text>
+  <text x="40" y="202" font-size="11" fill="#8a8578">Last Transaction</text>
+  <text x="40" y="218" font-size="13" fill="#1a1a1a">AED 2,450,000 · Jan 2024</text>
+  <text x="280" y="202" font-size="11" fill="#8a8578">Size</text>
+  <text x="280" y="218" font-size="13" fill="#1a1a1a">1,450 sqft · 2 BR · Sea view</text>
+
+  <!-- Portfolio -->
+  <rect x="616" y="106" width="644" height="140" rx="10" fill="white" stroke="#e5e1d8"/>
+  <text x="636" y="132" font-size="13" font-weight="600" fill="#1a1a1a">Portfolio (4 Properties)</text>
+  <rect x="636" y="144" width="604" height="28" fill="#f5f3ef"/>
+  <text x="648" y="162" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">BUILDING</text>
+  <text x="830" y="162" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">UNIT</text>
+  <text x="900" y="162" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">BEDS</text>
+  <text x="960" y="162" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">LAST SALE</text>
+  <text x="648" y="188" font-size="12" fill="#1a1a1a">Shoreline Apt. 9</text>
+  <text x="830" y="188" font-size="12" fill="#1a1a1a">S-201</text>
+  <text x="900" y="188" font-size="12" fill="#1a1a1a">2</text>
+  <text x="960" y="188" font-size="12" fill="#1a1a1a">AED 2.45M</text>
+  <text x="648" y="208" font-size="12" fill="#1a1a1a">Shoreline Apt. 9</text>
+  <text x="830" y="208" font-size="12" fill="#1a1a1a">S-304</text>
+  <text x="900" y="208" font-size="12" fill="#1a1a1a">2</text>
+  <text x="960" y="208" font-size="12" fill="#1a1a1a">AED 2.38M</text>
+  <text x="648" y="228" font-size="12" fill="#1a1a1a">Shoreline Apt. 4</text>
+  <text x="830" y="228" font-size="12" fill="#1a1a1a">B-1101</text>
+  <text x="900" y="228" font-size="12" fill="#1a1a1a">3</text>
+  <text x="960" y="228" font-size="12" fill="#1a1a1a">AED 3.20M</text>
+
+  <!-- Notes -->
+  <rect x="20" y="260" width="580" height="260" rx="10" fill="white" stroke="#e5e1d8"/>
+  <text x="40" y="286" font-size="13" font-weight="600" fill="#1a1a1a">Notes</text>
+  <rect x="40" y="298" width="540" height="60" rx="6" fill="#f5f3ef" stroke="#e5e1d8"/>
+  <text x="52" y="322" font-size="12" fill="#8a8578">Write a note...</text>
+  <rect x="40" y="368" width="100" height="28" rx="6" fill="#b8860b"/>
+  <text x="90" y="386" font-size="12" fill="white" text-anchor="middle">Save</text>
+
+  <!-- Note entries -->
+  <text x="40" y="420" font-size="11" font-weight="600" fill="#8a8578">27 Apr 2026 14:32</text>
+  <rect x="40" y="428" width="540" height="2" fill="#e5e1d8"/>
+  <text x="40" y="448" font-size="12" fill="#1a1a1a">Called to discuss potential listing of S-201. Owner interested</text>
+  <text x="40" y="464" font-size="12" fill="#1a1a1a">in AED 2.6M asking price. Follow up next week.</text>
+
+  <text x="40" y="494" font-size="11" font-weight="600" fill="#8a8578">15 Mar 2026 09:15</text>
+  <rect x="40" y="502" width="540" height="2" fill="#e5e1d8"/>
+  <text x="40" y="522" font-size="12" fill="#1a1a1a">WhatsApp message sent — no response yet.</text>
+
+  <!-- Follow-ups -->
+  <rect x="616" y="260" width="644" height="260" rx="10" fill="white" stroke="#e5e1d8"/>
+  <text x="636" y="286" font-size="13" font-weight="600" fill="#1a1a1a">Follow-Ups</text>
+  <rect x="636" y="298" width="300" height="32" rx="6" fill="#f5f3ef" stroke="#e5e1d8"/>
+  <text x="648" y="318" font-size="12" fill="#8a8578">Date &amp; time (e.g. 5 May, 3pm)</text>
+  <rect x="944" y="298" width="200" height="32" rx="6" fill="#f5f3ef" stroke="#e5e1d8"/>
+  <text x="956" y="318" font-size="12" fill="#8a8578">Reason</text>
+  <rect x="1152" y="298" width="96" height="32" rx="6" fill="#b8860b"/>
+  <text x="1200" y="318" font-size="12" font-weight="600" fill="white" text-anchor="middle">Set Reminder</text>
+
+  <!-- Reminder item -->
+  <rect x="636" y="344" width="604" height="56" rx="8" fill="#b8860b" fill-opacity="0.05" stroke="#b8860b" stroke-opacity="0.3"/>
+  <text x="652" y="368" font-size="13" font-weight="500" fill="#1a1a1a">Call back re S-201 listing discussion</text>
+  <text x="652" y="386" font-size="11" fill="#b8860b">⏰ Tue 5 May 2026, 15:00 · In 8 days</text>
+  <rect x="1172" y="354" width="56" height="26" rx="6" fill="#2d6a4f" fill-opacity="0.15"/>
+  <text x="1200" y="371" font-size="11" fill="#2d6a4f" text-anchor="middle">Done ✓</text>
+
+  <!-- Call log -->
+  <rect x="20" y="536" width="1240" height="196" rx="10" fill="white" stroke="#e5e1d8"/>
+  <text x="40" y="562" font-size="13" font-weight="600" fill="#1a1a1a">Call Log</text>
+  <rect x="1152" y="544" width="96" height="30" rx="6" fill="#b8860b"/>
+  <text x="1200" y="563" font-size="12" font-weight="600" fill="white" text-anchor="middle">Log Call</text>
+  <rect x="40" y="574" width="1200" height="28" fill="#f5f3ef"/>
+  <text x="52" y="592" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">DATE</text>
+  <text x="200" y="592" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">OUTCOME</text>
+  <text x="380" y="592" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">NOTES</text>
+  <text x="40" y="624" font-size="12" fill="#1a1a1a">27 Apr 2026 14:32</text>
+  <rect x="200" y="612" width="96" height="20" rx="10" fill="#b8860b" fill-opacity="0.15"/>
+  <text x="248" y="626" font-size="11" fill="#b8860b" text-anchor="middle">Interested</text>
+  <text x="380" y="624" font-size="12" fill="#1a1a1a">Discussed listing price, following up next week</text>
+  <text x="40" y="654" font-size="12" fill="#1a1a1a">15 Mar 2026 09:15</text>
+  <rect x="200" y="642" width="80" height="20" rx="10" fill="#e5e1d8"/>
+  <text x="240" y="656" font-size="11" fill="#8a8578" text-anchor="middle">No Answer</text>
+  <text x="380" y="654" font-size="12" fill="#1a1a1a">Tried calling, will send WhatsApp</text>
+  <text x="40" y="684" font-size="12" fill="#1a1a1a">2 Feb 2026 11:00</text>
+  <rect x="200" y="672" width="80" height="20" rx="10" fill="#2d6a4f" fill-opacity="0.15"/>
+  <text x="240" y="686" font-size="11" fill="#2d6a4f" text-anchor="middle">Voicemail</text>
+  <text x="380" y="684" font-size="12" fill="#1a1a1a">Left voicemail, introduced myself</text>
+</svg>

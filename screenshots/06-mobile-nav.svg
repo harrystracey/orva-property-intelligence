@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844" viewBox="0 0 390 844">
+  <defs>
+    <style>text{font-family:-apple-system,'Segoe UI',Arial,sans-serif}.serif{font-family:Georgia,'Times New Roman',serif}</style>
+    <clipPath id="screen"><rect width="390" height="844" rx="40"/></clipPath>
+  </defs>
+  <!-- Phone frame -->
+  <rect width="390" height="844" rx="40" fill="#1a1a1a"/>
+  <rect x="8" y="8" width="374" height="828" rx="34" fill="#faf9f6" clip-path="url(#screen)"/>
+
+  <!-- Status bar -->
+  <text x="30" y="36" font-size="14" font-weight="600" fill="#1a1a1a">9:41</text>
+  <text x="340" y="36" font-size="12" fill="#1a1a1a" text-anchor="end">●●● WiFi</text>
+
+  <!-- Mobile top bar -->
+  <rect x="8" y="48" width="374" height="44" fill="white" stroke="#e5e1d8" stroke-width="0.5"/>
+  <text x="28" y="65" class="serif" font-size="11" font-weight="300" letter-spacing="2" fill="#1a1a1a">ORVA</text>
+  <text x="28" y="77" font-size="6" letter-spacing="1.5" fill="#8a8578">PROPERTY INTELLIGENCE</text>
+  <!-- Hamburger -->
+  <line x1="340" y1="62" x2="368" y2="62" stroke="#8a8578" stroke-width="2"/>
+  <line x1="340" y1="70" x2="368" y2="70" stroke="#8a8578" stroke-width="2"/>
+  <line x1="340" y1="78" x2="368" y2="78" stroke="#8a8578" stroke-width="2"/>
+
+  <!-- Lead search content -->
+  <text x="28" y="122" font-size="17" font-weight="600" fill="#1a1a1a">Lead Search</text>
+
+  <!-- Search / filter -->
+  <rect x="20" y="134" width="350" height="40" rx="8" fill="white" stroke="#e5e1d8"/>
+  <text x="36" y="158" font-size="13" fill="#8a8578">Building, owner, unit...</text>
+  <rect x="20" y="182" width="107" height="34" rx="8" fill="#f5f3ef" stroke="#e5e1d8"/>
+  <text x="73" y="203" font-size="11" fill="#8a8578" text-anchor="middle">All beds ▾</text>
+  <rect x="134" y="182" width="107" height="34" rx="8" fill="#f5f3ef" stroke="#e5e1d8"/>
+  <text x="187" y="203" font-size="11" fill="#8a8578" text-anchor="middle">Sort ▾</text>
+  <rect x="248" y="182" width="122" height="34" rx="8" fill="#b8860b"/>
+  <text x="309" y="203" font-size="12" font-weight="600" fill="white" text-anchor="middle">Search</text>
+
+  <text x="28" y="240" font-size="11" fill="#8a8578">78,975 leads</text>
+
+  <!-- Lead cards -->
+  <rect x="20" y="252" width="350" height="78" rx="10" fill="white" stroke="#e5e1d8"/>
+  <text x="36" y="276" font-size="14" font-weight="500" fill="#1a1a1a">Ahmed Al Mansoori</text>
+  <text x="36" y="294" font-size="12" fill="#8a8578">Shoreline Apt. 9 · S-201 · 2 BR</text>
+  <text x="36" y="312" font-size="12" fill="#b8860b">+971 50 234 5678</text>
+  <rect x="316" y="264" width="40" height="20" rx="10" fill="#2d6a4f" fill-opacity="0.15"/>
+  <text x="336" y="278" font-size="10" fill="#2d6a4f" text-anchor="middle">95%</text>
+
+  <rect x="20" y="338" width="350" height="78" rx="10" fill="white" stroke="#e5e1d8"/>
+  <text x="36" y="362" font-size="14" font-weight="500" fill="#1a1a1a">Sarah Johnson</text>
+  <text x="36" y="380" font-size="12" fill="#8a8578">Oceana Atlantic · 1501 · 3 BR</text>
+  <text x="36" y="398" font-size="12" fill="#b8860b">+971 55 123 4567</text>
+  <rect x="316" y="350" width="40" height="20" rx="10" fill="#2d6a4f" fill-opacity="0.15"/>
+  <text x="336" y="364" font-size="10" fill="#2d6a4f" text-anchor="middle">90%</text>
+
+  <rect x="20" y="424" width="350" height="78" rx="10" fill="white" stroke="#e5e1d8"/>
+  <text x="36" y="448" font-size="14" font-weight="500" fill="#1a1a1a">Mohammed Al Rashid</text>
+  <text x="36" y="466" font-size="12" fill="#8a8578">Tiara Aquamarine · 805 · 1 BR</text>
+  <text x="36" y="484" font-size="12" fill="#b8860b">+971 52 987 6543</text>
+  <rect x="316" y="436" width="40" height="20" rx="10" fill="#b8860b" fill-opacity="0.15"/>
+  <text x="336" y="450" font-size="10" fill="#b8860b" text-anchor="middle">80%</text>
+
+  <rect x="20" y="510" width="350" height="78" rx="10" fill="white" stroke="#e5e1d8"/>
+  <text x="36" y="534" font-size="14" font-weight="500" fill="#1a1a1a">Fatima Al Zahrawi</text>
+  <text x="36" y="552" font-size="12" fill="#8a8578">Shoreline Apt. 7 · G-1104 · 2 BR</text>
+  <text x="36" y="570" font-size="12" fill="#b8860b">+971 50 765 4321</text>
+  <rect x="316" y="522" width="40" height="20" rx="10" fill="#b8860b" fill-opacity="0.15"/>
+  <text x="336" y="536" font-size="10" fill="#b8860b" text-anchor="middle">80%</text>
+
+  <!-- Partially visible -->
+  <rect x="20" y="596" width="350" height="40" rx="10" fill="white" stroke="#e5e1d8"/>
+  <text x="36" y="620" font-size="14" font-weight="500" fill="#1a1a1a">David Chen</text>
+  <text x="36" y="636" font-size="12" fill="#8a8578">Five Palm Jumeirah...</text>
+
+  <!-- Bottom nav -->
+  <rect x="8" y="746" width="374" height="82" fill="white" stroke="#e5e1d8" stroke-width="0.5"/>
+  <!-- Leads active -->
+  <rect x="28" y="752" width="58" height="58" rx="6" fill="transparent"/>
+  <rect x="44" y="754" width="2" height="2" rx="1" fill="#b8860b"/>
+  <text x="57" y="773" font-size="18" fill="#b8860b" text-anchor="middle">⌕</text>
+  <text x="57" y="790" font-size="9" font-weight="600" fill="#b8860b" text-anchor="middle">Leads</text>
+  <!-- Follow-ups -->
+  <text x="135" y="773" font-size="18" fill="#8a8578" text-anchor="middle">🗓</text>
+  <text x="135" y="790" font-size="9" fill="#8a8578" text-anchor="middle">Follow-Ups</text>
+  <!-- Contacts -->
+  <text x="213" y="773" font-size="18" fill="#8a8578" text-anchor="middle">👥</text>
+  <text x="213" y="790" font-size="9" fill="#8a8578" text-anchor="middle">Contacts</text>
+  <!-- WhatsApp -->
+  <text x="291" y="773" font-size="18" fill="#8a8578" text-anchor="middle">💬</text>
+  <text x="291" y="790" font-size="9" fill="#8a8578" text-anchor="middle">WhatsApp</text>
+  <!-- HLM -->
+  <text x="355" y="773" font-size="18" fill="#8a8578" text-anchor="middle">🤖</text>
+  <text x="355" y="790" font-size="9" fill="#8a8578" text-anchor="middle">HLM</text>
+  <!-- Home indicator -->
+  <rect x="148" y="832" width="94" height="5" rx="2.5" fill="#1a1a1a"/>
+</svg>

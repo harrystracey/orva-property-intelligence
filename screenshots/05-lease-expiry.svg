@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760">
+  <defs><style>text{font-family:-apple-system,'Segoe UI',Arial,sans-serif}.serif{font-family:Georgia,'Times New Roman',serif}</style></defs>
+  <rect width="1280" height="760" fill="#faf9f6"/>
+  <rect width="1280" height="48" fill="#ffffff" stroke="#e5e1d8" stroke-width="1"/>
+  <text x="20" y="27" class="serif" font-size="14" font-weight="300" letter-spacing="3" fill="#1a1a1a">ORVA</text>
+  <text x="20" y="39" font-size="7" letter-spacing="2" fill="#8a8578">PROPERTY INTELLIGENCE</text>
+  <text x="258" y="29" font-size="12" font-weight="600" fill="#b8860b">Rentals</text>
+
+  <!-- Header -->
+  <text x="32" y="86" font-size="20" font-weight="600" fill="#1a1a1a">Lease Expiry</text>
+  <rect x="1148" y="64" width="112" height="34" rx="8" stroke="#e5e1d8" fill="white"/>
+  <text x="1204" y="86" font-size="12" fill="#8a8578" text-anchor="middle">Export CSV</text>
+
+  <!-- Filters -->
+  <rect x="20" y="100" width="1240" height="60" rx="10" fill="white" stroke="#e5e1d8"/>
+  <text x="36" y="120" font-size="10" fill="#8a8578">Expiry Window</text>
+  <rect x="36" y="126" width="160" height="28" rx="6" fill="#f5f3ef" stroke="#e5e1d8"/>
+  <text x="48" y="145" font-size="12" fill="#1a1a1a">90 days</text>
+  <text x="212" y="120" font-size="10" fill="#8a8578">Building</text>
+  <rect x="212" y="126" width="200" height="28" rx="6" fill="#f5f3ef" stroke="#e5e1d8"/>
+  <text x="224" y="145" font-size="12" fill="#1a1a1a">e.g. Shoreline</text>
+  <text x="428" y="120" font-size="10" fill="#8a8578">Bedrooms</text>
+  <rect x="428" y="126" width="120" height="28" rx="6" fill="#f5f3ef" stroke="#e5e1d8"/>
+  <text x="440" y="145" font-size="12" fill="#1a1a1a">Any</text>
+
+  <!-- Stats -->
+  <rect x="20" y="176" width="290" height="76" rx="10" fill="white" stroke="#e5e1d8"/>
+  <text x="40" y="200" font-size="11" fill="#8a8578">Expiring &lt;= 90 days</text>
+  <text x="40" y="234" font-size="36" font-weight="700" fill="#1a1a1a">143</text>
+
+  <rect x="326" y="176" width="290" height="76" rx="10" fill="#b8860b" fill-opacity="0.05" stroke="#b8860b" stroke-opacity="0.3"/>
+  <text x="346" y="200" font-size="11" fill="#8a8578">With Owner Contact</text>
+  <text x="346" y="234" font-size="36" font-weight="700" fill="#b8860b">89</text>
+  <text x="420" y="234" font-size="16" fill="#8a8578">(62%)</text>
+
+  <rect x="632" y="176" width="290" height="76" rx="10" fill="white" stroke="#e5e1d8"/>
+  <text x="652" y="200" font-size="11" fill="#8a8578">Active Rentals Total</text>
+  <text x="652" y="234" font-size="36" font-weight="700" fill="#1a1a1a">3,659</text>
+
+  <rect x="938" y="176" width="322" height="76" rx="10" fill="white" stroke="#e5e1d8"/>
+  <text x="958" y="200" font-size="11" fill="#8a8578">Unique Buildings</text>
+  <text x="958" y="234" font-size="36" font-weight="700" fill="#1a1a1a">66</text>
+
+  <!-- Table -->
+  <rect x="20" y="268" width="1240" height="34" fill="#f5f3ef" stroke="#e5e1d8"/>
+  <text x="36" y="289" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">BUILDING / UNIT</text>
+  <text x="280" y="289" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">BEDS</text>
+  <text x="340" y="289" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">LEASE EXPIRY</text>
+  <text x="520" y="289" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">DAYS</text>
+  <text x="600" y="289" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">ANNUAL RENT</text>
+  <text x="780" y="289" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">OWNER</text>
+  <text x="1020" y="289" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">PHONE</text>
+
+  <!-- Row urgent -->
+  <rect x="20" y="302" width="1240" height="42" fill="#c53030" fill-opacity="0.04" stroke="#e5e1d8" stroke-width="0.5"/>
+  <text x="36" y="322" font-size="13" font-weight="500" fill="#1a1a1a">Shoreline Apt. 9</text>
+  <text x="36" y="338" font-size="11" fill="#8a8578">Unit S-204</text>
+  <text x="280" y="322" font-size="12" fill="#1a1a1a">2</text>
+  <text x="340" y="322" font-size="12" fill="#1a1a1a">3 May 2026</text>
+  <rect x="520" y="311" width="46" height="20" rx="10" fill="#c53030" fill-opacity="0.15"/>
+  <text x="543" y="325" font-size="11" fill="#c53030" text-anchor="middle">6d</text>
+  <text x="600" y="322" font-size="12" fill="#1a1a1a">AED 155,000</text>
+  <text x="780" y="322" font-size="12" fill="#1a1a1a">Ahmed Al Mansoori</text>
+  <text x="1020" y="322" font-size="12" fill="#b8860b">+971 50 234 5678</text>
+
+  <!-- Row urgent 2 -->
+  <rect x="20" y="344" width="1240" height="42" fill="#c53030" fill-opacity="0.04" stroke="#e5e1d8" stroke-width="0.5"/>
+  <text x="36" y="364" font-size="13" font-weight="500" fill="#1a1a1a">Oceana Atlantic</text>
+  <text x="36" y="380" font-size="11" fill="#8a8578">Unit 1203</text>
+  <text x="280" y="364" font-size="12" fill="#1a1a1a">3</text>
+  <text x="340" y="364" font-size="12" fill="#1a1a1a">10 May 2026</text>
+  <rect x="520" y="353" width="52" height="20" rx="10" fill="#c53030" fill-opacity="0.15"/>
+  <text x="546" y="367" font-size="11" fill="#c53030" text-anchor="middle">13d</text>
+  <text x="600" y="364" font-size="12" fill="#1a1a1a">AED 240,000</text>
+  <text x="780" y="364" font-size="12" fill="#1a1a1a">Sarah Johnson</text>
+  <text x="1020" y="364" font-size="12" fill="#b8860b">+971 55 123 4567</text>
+
+  <!-- Row soon -->
+  <rect x="20" y="386" width="1240" height="42" fill="#b8860b" fill-opacity="0.03" stroke="#e5e1d8" stroke-width="0.5"/>
+  <text x="36" y="406" font-size="13" font-weight="500" fill="#1a1a1a">Tiara Aquamarine</text>
+  <text x="36" y="422" font-size="11" fill="#8a8578">Unit 805</text>
+  <text x="280" y="406" font-size="12" fill="#1a1a1a">1</text>
+  <text x="340" y="406" font-size="12" fill="#1a1a1a">28 May 2026</text>
+  <rect x="520" y="395" width="52" height="20" rx="10" fill="#b8860b" fill-opacity="0.15"/>
+  <text x="546" y="409" font-size="11" fill="#b8860b" text-anchor="middle">31d</text>
+  <text x="600" y="406" font-size="12" fill="#1a1a1a">AED 98,000</text>
+  <text x="780" y="406" font-size="12" fill="#1a1a1a">Mohammed Al Rashid</text>
+  <text x="1020" y="406" font-size="12" fill="#b8860b">+971 52 987 6543</text>
+
+  <!-- Row normal -->
+  <rect x="20" y="428" width="1240" height="42" fill="white" stroke="#e5e1d8" stroke-width="0.5"/>
+  <text x="36" y="448" font-size="13" font-weight="500" fill="#1a1a1a">Balqis Residence</text>
+  <text x="36" y="464" font-size="11" fill="#8a8578">Unit 312</text>
+  <text x="280" y="448" font-size="12" fill="#1a1a1a">2</text>
+  <text x="340" y="448" font-size="12" fill="#1a1a1a">14 Jun 2026</text>
+  <rect x="520" y="437" width="52" height="20" rx="10" fill="#e5e1d8"/>
+  <text x="546" y="451" font-size="11" fill="#8a8578" text-anchor="middle">48d</text>
+  <text x="600" y="448" font-size="12" fill="#1a1a1a">AED 175,000</text>
+  <text x="780" y="448" font-size="12" fill="#1a1a1a">Noura Al Sabah</text>
+  <text x="1020" y="448" font-size="12" fill="#b8860b">+971 50 456 7890</text>
+
+  <!-- Row no match -->
+  <rect x="20" y="470" width="1240" height="42" fill="#faf9f6" stroke="#e5e1d8" stroke-width="0.5"/>
+  <text x="36" y="490" font-size="13" font-weight="500" fill="#1a1a1a">Prive by Damac</text>
+  <text x="36" y="506" font-size="11" fill="#8a8578">Unit 1501</text>
+  <text x="280" y="490" font-size="12" fill="#1a1a1a">3</text>
+  <text x="340" y="490" font-size="12" fill="#1a1a1a">22 Jun 2026</text>
+  <rect x="520" y="479" width="52" height="20" rx="10" fill="#e5e1d8"/>
+  <text x="546" y="493" font-size="11" fill="#8a8578" text-anchor="middle">56d</text>
+  <text x="600" y="490" font-size="12" fill="#1a1a1a">AED 215,000</text>
+  <text x="780" y="490" font-size="12" fill="#8a8578">no match</text>
+  <text x="1020" y="490" font-size="12" fill="#8a8578">—</text>
+
+  <rect x="20" y="512" width="1240" height="42" fill="white" stroke="#e5e1d8" stroke-width="0.5"/>
+  <text x="36" y="532" font-size="13" font-weight="500" fill="#1a1a1a">Marina Residences 4</text>
+  <text x="36" y="548" font-size="11" fill="#8a8578">Unit 908</text>
+  <text x="280" y="532" font-size="12" fill="#1a1a1a">1</text>
+  <text x="340" y="532" font-size="12" fill="#1a1a1a">1 Jul 2026</text>
+  <rect x="520" y="521" width="52" height="20" rx="10" fill="#e5e1d8"/>
+  <text x="546" y="535" font-size="11" fill="#8a8578" text-anchor="middle">65d</text>
+  <text x="600" y="532" font-size="12" fill="#1a1a1a">AED 112,000</text>
+  <text x="780" y="532" font-size="12" fill="#1a1a1a">James Williams</text>
+  <text x="1020" y="532" font-size="12" fill="#b8860b">+971 55 678 9012</text>
+
+  <text x="32" y="590" font-size="12" fill="#8a8578">143 leases expiring in the next 90 days · 89 with owner contact data</text>
+  <rect x="20" y="604" width="1240" height="2" fill="#e5e1d8"/>
+  <text x="32" y="630" font-size="12" fill="#8a8578">Data sourced from 4,569 Ejari rental contracts · 66 buildings covered</text>
+</svg>

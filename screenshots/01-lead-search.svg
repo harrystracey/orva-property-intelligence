@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760">
+  <defs><style>text{font-family:-apple-system,'Segoe UI',Arial,sans-serif}.serif{font-family:Georgia,'Times New Roman',serif}</style></defs>
+  <rect width="1280" height="760" fill="#faf9f6"/>
+  <!-- Navbar -->
+  <rect width="1280" height="48" fill="#ffffff" stroke="#e5e1d8" stroke-width="1"/>
+  <text x="20" y="27" class="serif" font-size="14" font-weight="300" letter-spacing="3" fill="#1a1a1a">ORVA</text>
+  <text x="20" y="39" font-size="7" letter-spacing="2" fill="#8a8578">PROPERTY INTELLIGENCE</text>
+  <rect x="80" y="10" width="60" height="28" rx="6" fill="#b8860b" fill-opacity="0.15"/>
+  <text x="110" y="29" font-size="12" font-weight="600" fill="#b8860b" text-anchor="middle">Leads</text>
+  <text x="175" y="29" font-size="12" fill="#8a8578">Follow-Ups</text>
+  <text x="258" y="29" font-size="12" fill="#8a8578">Rentals</text>
+  <text x="330" y="29" font-size="12" fill="#8a8578">WhatsApp</text>
+  <text x="410" y="29" font-size="12" fill="#8a8578">Call Log</text>
+  <text x="480" y="29" font-size="12" fill="#8a8578">Contacts</text>
+  <text x="552" y="29" font-size="12" fill="#8a8578">HLM</text>
+  <text x="598" y="29" font-size="12" fill="#8a8578">Bayut</text>
+  <text x="645" y="29" font-size="12" fill="#8a8578">Match</text>
+  <text x="696" y="29" font-size="12" fill="#8a8578">Tools</text>
+  <text x="1240" y="29" font-size="12" fill="#8a8578" text-anchor="end">Harry</text>
+  <!-- Header -->
+  <text x="32" y="86" font-size="20" font-weight="600" fill="#1a1a1a">Lead Search</text>
+  <rect x="1148" y="64" width="112" height="34" rx="8" stroke="#e5e1d8" fill="white"/>
+  <text x="1204" y="86" font-size="12" fill="#8a8578" text-anchor="middle">Export CSV</text>
+  <!-- Filter panel -->
+  <rect x="20" y="100" width="1240" height="70" rx="10" fill="white" stroke="#e5e1d8"/>
+  <text x="36" y="122" font-size="10" fill="#8a8578">Building</text>
+  <rect x="36" y="128" width="200" height="30" rx="6" stroke="#e5e1d8" fill="#faf9f6"/>
+  <text x="48" y="147" font-size="12" fill="#1a1a1a">Shoreline</text>
+  <text x="248" y="122" font-size="10" fill="#8a8578">Bedrooms</text>
+  <rect x="248" y="128" width="130" height="30" rx="6" stroke="#e5e1d8" fill="#faf9f6"/>
+  <text x="260" y="147" font-size="12" fill="#1a1a1a">All bedrooms</text>
+  <text x="392" y="122" font-size="10" fill="#8a8578">Sort by</text>
+  <rect x="392" y="128" width="150" height="30" rx="6" stroke="#e5e1d8" fill="#faf9f6"/>
+  <text x="404" y="147" font-size="12" fill="#1a1a1a">Completeness</text>
+  <rect x="1152" y="128" width="96" height="30" rx="6" fill="#b8860b"/>
+  <text x="1200" y="147" font-size="12" font-weight="600" fill="white" text-anchor="middle">Search</text>
+  <!-- Results info -->
+  <text x="32" y="198" font-size="13" fill="#8a8578">Showing 250 of <tspan font-weight="600" fill="#1a1a1a">78,975</tspan> leads</text>
+  <!-- Table header -->
+  <rect x="20" y="210" width="1240" height="34" fill="#f5f3ef" stroke="#e5e1d8"/>
+  <text x="36" y="231" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">OWNER</text>
+  <text x="260" y="231" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">BUILDING</text>
+  <text x="490" y="231" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">UNIT</text>
+  <text x="560" y="231" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">BEDS</text>
+  <text x="620" y="231" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">SQFT</text>
+  <text x="720" y="231" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">PHONE</text>
+  <text x="920" y="231" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">DATE</text>
+  <text x="1060" y="231" font-size="10" font-weight="600" fill="#8a8578" letter-spacing="0.5">COMPLETENESS</text>
+
+  <!-- Rows -->
+  <rect x="20" y="244" width="1240" height="42" fill="white" stroke="#e5e1d8" stroke-width="0.5"/>
+  <text x="36" y="265" font-size="13" font-weight="500" fill="#1a1a1a">Ahmed Al Mansoori</text>
+  <text x="36" y="280" font-size="11" fill="#8a8578">+971502345678</text>
+  <text x="260" y="265" font-size="12" fill="#1a1a1a">Shoreline Apt. 9</text>
+  <text x="490" y="265" font-size="12" fill="#1a1a1a">S-201</text>
+  <text x="560" y="265" font-size="12" fill="#1a1a1a">2</text>
+  <text x="620" y="265" font-size="12" fill="#1a1a1a">1,450</text>
+  <text x="720" y="265" font-size="12" fill="#1a1a1a">+971 50 234 5678</text>
+  <text x="920" y="265" font-size="12" fill="#1a1a1a">15 Jan 2024</text>
+  <rect x="1060" y="258" width="52" height="7" rx="3" fill="#2d6a4f"/>
+  <text x="1124" y="268" font-size="11" fill="#2d6a4f">95%</text>
+
+  <rect x="20" y="286" width="1240" height="42" fill="#faf9f6" stroke="#e5e1d8" stroke-width="0.5"/>
+  <text x="36" y="307" font-size="13" font-weight="500" fill="#1a1a1a">Sarah Johnson</text>
+  <text x="260" y="307" font-size="12" fill="#1a1a1a">Oceana Atlantic</text>
+  <text x="490" y="307" font-size="12" fill="#1a1a1a">1501</text>
+  <text x="560" y="307" font-size="12" fill="#1a1a1a">3</text>
+  <text x="620" y="307" font-size="12" fill="#1a1a1a">2,200</text>
+  <text x="720" y="307" font-size="12" fill="#1a1a1a">+971 55 123 4567</text>
+  <text x="920" y="307" font-size="12" fill="#1a1a1a">3 Mar 2023</text>
+  <rect x="1060" y="300" width="48" height="7" rx="3" fill="#2d6a4f"/>
+  <text x="1120" y="310" font-size="11" fill="#2d6a4f">90%</text>
+
+  <rect x="20" y="328" width="1240" height="42" fill="white" stroke="#e5e1d8" stroke-width="0.5"/>
+  <text x="36" y="349" font-size="13" font-weight="500" fill="#1a1a1a">Mohammed Al Rashid</text>
+  <text x="260" y="349" font-size="12" fill="#1a1a1a">Tiara Aquamarine</text>
+  <text x="490" y="349" font-size="12" fill="#1a1a1a">805</text>
+  <text x="560" y="349" font-size="12" fill="#1a1a1a">1</text>
+  <text x="620" y="349" font-size="12" fill="#1a1a1a">890</text>
+  <text x="720" y="349" font-size="12" fill="#1a1a1a">+971 52 987 6543</text>
+  <text x="920" y="349" font-size="12" fill="#1a1a1a">7 Nov 2022</text>
+  <rect x="1060" y="342" width="42" height="7" rx="3" fill="#b8860b"/>
+  <text x="1114" y="352" font-size="11" fill="#b8860b">80%</text>
+
+  <rect x="20" y="370" width="1240" height="42" fill="#faf9f6" stroke="#e5e1d8" stroke-width="0.5"/>
+  <text x="36" y="391" font-size="13" font-weight="500" fill="#1a1a1a">Fatima Al Zahrawi</text>
+  <text x="260" y="391" font-size="12" fill="#1a1a1a">Shoreline Apt. 7</text>
+  <text x="490" y="391" font-size="12" fill="#1a1a1a">G-1104</text>
+  <text x="560" y="391" font-size="12" fill="#1a1a1a">2</text>
+  <text x="620" y="391" font-size="12" fill="#1a1a1a">1,380</text>
+  <text x="720" y="391" font-size="12" fill="#1a1a1a">+971 50 765 4321</text>
+  <text x="920" y="391" font-size="12" fill="#1a1a1a">22 Jun 2023</text>
+  <rect x="1060" y="384" width="42" height="7" rx="3" fill="#b8860b"/>
+  <text x="1114" y="394" font-size="11" fill="#b8860b">80%</text>
+
+  <rect x="20" y="412" width="1240" height="42" fill="white" stroke="#e5e1d8" stroke-width="0.5"/>
+  <text x="36" y="433" font-size="13" font-weight="500" fill="#1a1a1a">David Chen</text>
+  <text x="260" y="433" font-size="12" fill="#1a1a1a">Five Palm Jumeirah</text>
+  <text x="490" y="433" font-size="12" fill="#1a1a1a">40903</text>
+  <text x="560" y="433" font-size="12" fill="#1a1a1a">2</text>
+  <text x="620" y="433" font-size="12" fill="#1a1a1a">1,945</text>
+  <text x="720" y="433" font-size="12" fill="#1a1a1a">+971 58 345 6789</text>
+  <text x="920" y="433" font-size="12" fill="#1a1a1a">9 Apr 2024</text>
+  <rect x="1060" y="426" width="46" height="7" rx="3" fill="#2d6a4f"/>
+  <text x="1118" y="436" font-size="11" fill="#2d6a4f">85%</text>
+
+  <rect x="20" y="454" width="1240" height="42" fill="#faf9f6" stroke="#e5e1d8" stroke-width="0.5"/>
+  <text x="36" y="475" font-size="13" font-weight="500" fill="#1a1a1a">Noura Al Sabah</text>
+  <text x="260" y="475" font-size="12" fill="#1a1a1a">Balqis Residence</text>
+  <text x="490" y="475" font-size="12" fill="#1a1a1a">702</text>
+  <text x="560" y="475" font-size="12" fill="#1a1a1a">4</text>
+  <text x="620" y="475" font-size="12" fill="#1a1a1a">3,100</text>
+  <text x="720" y="475" font-size="12" fill="#1a1a1a">+971 50 456 7890</text>
+  <text x="920" y="475" font-size="12" fill="#1a1a1a">30 Sep 2022</text>
+  <rect x="1060" y="468" width="50" height="7" rx="3" fill="#2d6a4f"/>
+  <text x="1122" y="478" font-size="11" fill="#2d6a4f">92%</text>
+
+  <rect x="20" y="496" width="1240" height="42" fill="white" stroke="#e5e1d8" stroke-width="0.5"/>
+  <text x="36" y="517" font-size="13" font-weight="500" fill="#1a1a1a">James Williams</text>
+  <text x="260" y="517" font-size="12" fill="#1a1a1a">Marina Residences 4</text>
+  <text x="490" y="517" font-size="12" fill="#1a1a1a">1203</text>
+  <text x="560" y="517" font-size="12" fill="#1a1a1a">1</text>
+  <text x="620" y="517" font-size="12" fill="#1a1a1a">920</text>
+  <text x="720" y="517" font-size="12" fill="#1a1a1a">+971 55 678 9012</text>
+  <text x="920" y="517" font-size="12" fill="#1a1a1a">11 Jan 2024</text>
+  <rect x="1060" y="510" width="38" height="7" rx="3" fill="#b8860b"/>
+  <text x="1110" y="520" font-size="11" fill="#b8860b">75%</text>
+
+  <!-- More rows indicator -->
+  <text x="32" y="560" font-size="12" fill="#8a8578">· · ·</text>
+  <text x="32" y="590" font-size="13" fill="#8a8578">Page 1 of 316  ·  78,975 leads total</text>
+  <rect x="1120" y="572" width="66" height="30" rx="6" stroke="#e5e1d8" fill="white"/>
+  <text x="1153" y="591" font-size="12" fill="#8a8578" text-anchor="middle">Prev</text>
+  <rect x="1194" y="572" width="66" height="30" rx="6" fill="#b8860b"/>
+  <text x="1227" y="591" font-size="12" fill="white" text-anchor="middle">Next</text>
+</svg>

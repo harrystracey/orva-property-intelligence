@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760">
+  <defs><style>text{font-family:-apple-system,'Segoe UI',Arial,sans-serif}.serif{font-family:Georgia,'Times New Roman',serif}</style></defs>
+  <rect width="1280" height="760" fill="#faf9f6"/>
+  <!-- Navbar -->
+  <rect width="1280" height="48" fill="#ffffff" stroke="#e5e1d8" stroke-width="1"/>
+  <text x="20" y="27" class="serif" font-size="14" font-weight="300" letter-spacing="3" fill="#1a1a1a">ORVA</text>
+  <text x="20" y="39" font-size="7" letter-spacing="2" fill="#8a8578">PROPERTY INTELLIGENCE</text>
+  <text x="110" y="29" font-size="12" fill="#8a8578" text-anchor="middle">Leads</text>
+  <text x="175" y="29" font-size="12" fill="#8a8578">Follow-Ups</text>
+  <text x="258" y="29" font-size="12" fill="#8a8578">Rentals</text>
+  <text x="330" y="29" font-size="12" fill="#8a8578">WhatsApp</text>
+  <text x="480" y="29" font-size="12" fill="#8a8578">Contacts</text>
+  <rect x="540" y="10" width="50" height="28" rx="6" fill="#b8860b" fill-opacity="0.15"/>
+  <text x="565" y="29" font-size="12" font-weight="600" fill="#b8860b" text-anchor="middle">HLM</text>
+
+  <!-- Left sidebar -->
+  <rect x="0" y="48" width="240" height="712" fill="white" stroke="#e5e1d8" stroke-width="1"/>
+  <text x="20" y="80" font-size="14" font-weight="600" fill="#1a1a1a">Conversations</text>
+  <rect x="16" y="92" width="208" height="34" rx="8" fill="#b8860b"/>
+  <text x="120" y="113" font-size="12" font-weight="600" fill="white" text-anchor="middle">+ New Chat</text>
+
+  <!-- Chat list items -->
+  <rect x="16" y="134" width="208" height="52" rx="8" fill="#f5f3ef" stroke="#e5e1d8"/>
+  <text x="28" y="155" font-size="12" font-weight="500" fill="#1a1a1a">Shoreline 9 market intel</text>
+  <text x="28" y="172" font-size="11" fill="#8a8578">What units sold above...</text>
+
+  <rect x="16" y="194" width="208" height="52" rx="8"/>
+  <text x="28" y="215" font-size="12" fill="#1a1a1a">Portfolio analysis request</text>
+  <text x="28" y="232" font-size="11" fill="#8a8578">Owner in 3 buildings, 7...</text>
+
+  <rect x="16" y="254" width="208" height="52" rx="8"/>
+  <text x="28" y="275" font-size="12" fill="#1a1a1a">Yield calculation Oceana</text>
+  <text x="28" y="292" font-size="11" fill="#8a8578">Current rental yields...</text>
+
+  <!-- Main chat area -->
+  <rect x="240" y="48" width="1040" height="712" fill="#faf9f6"/>
+
+  <!-- Chat header -->
+  <rect x="240" y="48" width="1040" height="56" fill="white" stroke="#e5e1d8" stroke-width="1"/>
+  <text x="264" y="72" font-size="16" font-weight="600" fill="#1a1a1a">HLM — Property Intelligence</text>
+  <text x="264" y="92" font-size="12" fill="#8a8578">AI-powered property research · Palm Jumeirah specialist</text>
+
+  <!-- Messages -->
+  <!-- User message 1 -->
+  <rect x="700" y="128" width="540" height="64" rx="12" fill="#b8860b" fill-opacity="0.12" stroke="#b8860b" stroke-opacity="0.3"/>
+  <text x="716" y="150" font-size="13" fill="#1a1a1a">What are the current market rental yields in</text>
+  <text x="716" y="168" font-size="13" fill="#1a1a1a">Shoreline Apartments for 2-bedroom units?</text>
+
+  <!-- AI message 1 -->
+  <rect x="264" y="208" width="680" height="200" rx="12" fill="white" stroke="#e5e1d8"/>
+  <text x="280" y="232" font-size="12" font-weight="600" fill="#b8860b">ORVA</text>
+  <text x="280" y="256" font-size="13" fill="#1a1a1a">Based on 847 rental contracts in the Ejari database for</text>
+  <text x="280" y="274" font-size="13" fill="#1a1a1a">Shoreline Apartments, here are the current yields for 2-bed:</text>
+  <text x="280" y="302" font-size="13" fill="#1a1a1a">• Avg annual rent: AED 148,000 – 165,000</text>
+  <text x="280" y="320" font-size="13" fill="#1a1a1a">• Median sale price (last 12 months): AED 2.4M – 2.8M</text>
+  <text x="280" y="338" font-size="13" fill="#1a1a1a">• Gross yield: approximately 5.8% – 6.4%</text>
+  <text x="280" y="364" font-size="12" fill="#8a8578">Sources: 36,500 DLD transactions · 4,569 Ejari contracts</text>
+
+  <!-- User message 2 -->
+  <rect x="700" y="424" width="540" height="44" rx="12" fill="#b8860b" fill-opacity="0.12" stroke="#b8860b" stroke-opacity="0.3"/>
+  <text x="716" y="450" font-size="13" fill="#1a1a1a">Who are the biggest multi-unit owners in Shoreline 9?</text>
+
+  <!-- AI message 2 -->
+  <rect x="264" y="484" width="680" height="180" rx="12" fill="white" stroke="#e5e1d8"/>
+  <text x="280" y="508" font-size="12" font-weight="600" fill="#b8860b">ORVA</text>
+  <text x="280" y="530" font-size="13" fill="#1a1a1a">Searching the 78,975-lead database for Shoreline 9...</text>
+  <text x="280" y="556" font-size="13" fill="#1a1a1a">Found 3 multi-unit owners (2+ properties):</text>
+  <text x="280" y="578" font-size="13" fill="#1a1a1a">1. Ahmed Al Mansoori — 4 units (S-201, S-304, S-508, S-612)</text>
+  <text x="280" y="596" font-size="13" fill="#1a1a1a">2. Khalid Al Hamdan — 2 units (S-1102, S-1104)</text>
+  <text x="280" y="614" font-size="13" fill="#1a1a1a">3. Investment Co LLC — 3 units (S-201B, S-402, S-901)</text>
+  <text x="280" y="638" font-size="12" fill="#8a8578">Click any name to open client profile →</text>
+
+  <!-- Input area -->
+  <rect x="264" y="684" width="1000" height="52" rx="12" fill="white" stroke="#e5e1d8"/>
+  <text x="284" y="714" font-size="13" fill="#8a8578">Ask about market data, owners, yields, listings...</text>
+  <rect x="1226" y="694" width="32" height="32" rx="8" fill="#b8860b"/>
+  <text x="1242" y="714" font-size="14" fill="white" text-anchor="middle">↑</text>
+</svg>
