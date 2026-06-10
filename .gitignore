@@ -45,9 +45,13 @@ client_data/
 # Large data files
 lead_database/*.csv
 lead_database/*.parquet
+lead_database/*.xlsx
+lead_database/*.xls
 scraped_data/*.csv
 scraped_data/*.json
 data/bayut_listings_progress.json
+data/*.parquet
+data/reidin_*
 
 # Logs
 logs/
